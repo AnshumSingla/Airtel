@@ -29,4 +29,3 @@ Thumbs.db
 
 # local SQLite database rebuilt at every boot
 backend/udyam.db*
-evidence_spike_log.txt

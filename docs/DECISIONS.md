@@ -71,7 +71,7 @@ The deck says "English and Hindi end to end. Other Indian languages need a produ
 
 - **Pick:** RapidOCR (pip, ONNX) on in-memory images, after red-channel watermark removal and deskew; Tesseract as fallback if the day-1 spike disappoints.
 - **Why:** documents are not sent to a third-party OCR or AI vendor, which **reduces** onward transfer. It is not a privacy guarantee on its own: collection, access, retention, hosting and logging are handled separately ([POLICIES.md §3](POLICIES.md#3-data-inventory-and-retention)). The specimens are clean, fixed-layout documents, which suits classic OCR.
-- **Day-1 spike:** run on all 47 images against a hand-made answer key; report per-field accuracy and false accepts.
+- **Day-1 spike: done** ([evidence/ocr_spike/](../evidence/ocr_spike/README.md)). RapidOCR is adopted; Tesseract isn't needed. The red channel is essential (raw images: 2 of 12 GSTINs read; red channel: 8, with the other 4 explained by planted problems or owner-confirmable O/0 repairs). The blur gate and deskew are needed for K04 and K02. The answer key is drafted; per-field accuracy waits for the final hand-checked key.
 - **Would change if:** field accuracy is too low after preprocessing; then a vision model under explicit consent, paid tier only, and the privacy note changes to say so.
 
 ## D9. KYC outcomes

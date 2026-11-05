@@ -208,7 +208,7 @@ KYC produces **two separate results**: an **applicant result** (about the docume
 |---|---|---|
 | `checks_passed` | All automated consistency checks passed for the documents provided: formats, registry status of the business proof used, cross-document agreement, freshness, completeness, image quality | That the documents are genuine, unaltered, or submitted by an authorised person. We do not detect tampering and do not claim to |
 | `owner_action_needed` | Something the owner can fix in the app: retake a blurry photo, upload a newer bill, add a missing document, confirm an OCR reading, provide a valid business registration | — |
-| `manual_review` | A specialist must decide: name or address mismatch above the fuzzy threshold, any repaired identifier the owner disputes, `not_found` registry result, signatory not matching the GST record | — |
+| `manual_review` | A specialist must decide: name or address mismatch below the similarity threshold, any repaired identifier the owner disputes, `not_found` registry result, a document whose **printed** identifier fails its own format or check digit (for example K06), and a proprietorship signatory who doesn't match the proprietor on the GST record | — |
 
 **Line eligibility result**, per item: `eligible`, or `excluded` with a reason (`GSTIN_INACTIVE`, `GSTIN_MISSING`, plus the catalogue exclusions from §6). A Cancelled or Suspended GSTIN is **not** an applicant-level stop: it excludes the GSTIN-only lines, and the GST certificate cannot be the business proof. If the owner also has a valid Udyam certificate, the applicant result can still be `checks_passed` for the remaining lines. The screen says what the owner can do (remove those items, or sort out the GST registration and come back). The old applicant-level `blocked` outcome is removed.
 
@@ -220,7 +220,8 @@ OCR identifier policy:
 - **Linking** documents to a business uses identifiers (GSTIN, Udyam number). **Names** are only a consistency check between documents and the registry, never the way records are matched, and a name mismatch can only lower the outcome, never raise it.
 
 Matching thresholds [ASSUMPTION, tuned on the 12 specimen sets and reported]:
-- Names: normalise (case, punctuation, "Pvt Ltd/LLP/Prop." suffixes), then token-set similarity. ≥ 0.95 pass; 0.80–0.95 pass with a note to the reviewer; < 0.80 `manual_review`.
+- Names: normalise (case, spacing, punctuation, "Prop." wrappers and Pvt Ltd/LLP suffixes, even when OCR has glued them on), then character similarity. **≥ 0.95 pass; < 0.95 `manual_review`.** Revised after the OCR spike: the earlier "0.80–0.95 pass with a note" band would have passed K07, whose legal name was altered ("Shri Physio Clinic" vs the registry's "Neelgiri Physio Clinic", similarity 0.87). That is a false accept. Every clean specimen scores ≥ 0.95.
+- Signatory: for a **proprietorship**, the ID name must match the proprietor in the GST legal name. For partnerships, LLPs and companies the mock registry holds no partner or director names, so the signatory **can't be checked**. That is recorded as a reviewer note, not `manual_review`, and the UI never implies it was checked.
 - Address: compare pincode, city and state from the bill against the GST principal place of business. Pincode + state equal → pass; state equal but pincode different → `manual_review` (could be a second site); state different → `manual_review`. The **installation address** is captured separately and may differ from the address proof.
 - GSTIN state code must equal the state on the GST record.
 - Freshness: address proof dated within **90 days** before `business_as_of` [ASSUMPTION from the data pack, configurable in `policy.yaml`]; signatory ID `valid till` ≥ `business_as_of`. Accepted address-proof types for the prototype: electricity bill only (the only specimen type supplied).
@@ -364,9 +365,9 @@ Wording fixes from this rule: the P02 reason in WORKED_QUOTES §A no longer says
 | Authorisation and scope | §11, §13 | `test_scope_direct_api`: every back-office route called directly with each role's session, including partner A vs B and a referral code without P5 | No deploy | Planned |
 | CSRF / Origin | §13 | `test_csrf`: every mutating route rejects a missing or wrong token and a foreign `Origin` | No deploy | Planned |
 | KYC field encryption | §13 | `test_kyc_crypto`: round-trip across a process restart; rotation | No deploy | Planned |
-| KYC answer key | §9 | `kyc-answer-key-report.md`: per-field and per-applicant results for 47 images, **false accepts first** | False accepts > 0 → that applicant is not used in the demo, and the deck reports the miss | Planned |
+| KYC answer key | §9 | `kyc-answer-key-report.md`: per-field and per-applicant results for 47 images, **false accepts first** | False accepts > 0 → that applicant is not used in the demo, and the deck reports the miss | **Draft**: OCR spike and cross-check run locally (`evidence/ocr_spike/`); expected outcomes drafted in `evidence/ocr_spike/answer_key_draft.md`; no automated pipeline yet |
 | Order and line states | §10 | `test_orders`: the mixed-order example (§10) and every transition in the table, including rejected ones | No deploy | Planned |
-| Quote arithmetic | §7, WORKED_QUOTES | `test_worked_quotes`: all worked quotes and negative cases reproduce exactly | No deploy | Planned |
+| Quote arithmetic | §7, WORKED_QUOTES | `test_worked_quotes`: all worked quotes and negative cases reproduce exactly | No deploy | **Implemented, tested locally**: `backend/tests/test_worked_quotes.py` passes; CI not set up yet, so no `evidence/` file |
 | Explanation guard and claims | §5.4, §14 | `test_guard`: banned content rejected; templates audited against §14 | Guard failures fall back to templates; template failures block deploy | Planned |
 | Advisor evals | DECISIONS D17 | `advisor-evals.md`: about 20 scenarios on the fake provider, plus one capped live run | Live-run failures → demo uses scripted mode | Planned |
 | `approved` LLM profile | §5.1 | Not built; a production requirement | — | Not in scope |
