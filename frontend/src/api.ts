@@ -46,6 +46,19 @@ export type Options = {
   needs: { product_id: string; label: Record<string, string> }[];
 };
 
+export type OrderLine = { product_id: string; name: string; quantity: number; status: string; install_days: number; eta_day: number | null; days_left: number | null; reason: string | null };
+export type Order = {
+  order_id: string; status: string; hold_reason: string | null; sim_day: number; quote_version: number; quote: Quote;
+  kyc_case_id: string | null; lines: OrderLine[]; messages: { text: string; sim_day: number; label: string }[];
+  substitute_offer: { failed: string; substitute: string | null; substitute_name: string | null; substitute_description: string | null } | null;
+};
+
+const key = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+// Each user action gets one key; creating an order uses a key derived from the session and quote version,
+// so a double tap or a network retry can never create two orders.
+const postIdem = <T,>(path: string, body: unknown, idemKey: string = key()) =>
+  call<T>(path, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idemKey }, body: JSON.stringify(body) });
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
@@ -86,7 +99,25 @@ export const api = {
     return call<Upload>(`/api/kyc/cases/${caseId}/documents`, { method: "POST", body: form });
   },
   submit: (caseId: string, productIds: string[]) => post<KycView>(`/api/kyc/cases/${caseId}/submit`, { product_ids: productIds }),
+  specimens: () => call<{ sets: Record<string, string[]> }>("/api/demo/specimens"),
+  specimenFile: async (setId: string, docType: string) => {
+    const res = await fetch(`/api/demo/specimens/${setId}_${docType}`);
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    return new File([await res.blob()], `${setId}_${docType}.png`, { type: "image/png" });
+  },
   confirmReading: (caseId: string, accept: boolean) => post<KycView>(`/api/kyc/cases/${caseId}/confirm-identifier`, { field: "gstin", accept }),
+};
+
+export const orders = {
+  create: (sid: string, version: number) => postIdem<Order>("/api/orders", { session_id: sid, quote_version: version }, `order-${sid}-v${version}`),
+  get: (sid: string, id: string) => call<Order>(`/api/orders/${id}?session_id=${encodeURIComponent(sid)}`),
+  submitKyc: (sid: string, id: string, caseId: string) => postIdem<Order>(`/api/orders/${id}/submit-kyc`, { session_id: sid, case_id: caseId }),
+  continueWithout: (sid: string, id: string) => postIdem<Order>(`/api/orders/${id}/continue-without-excluded`, { session_id: sid }),
+  feasibility: (sid: string, id: string, accept: boolean) => postIdem<Order>(`/api/orders/${id}/feasibility-decision`, { session_id: sid, accept_substitute: accept }),
+  reschedule: (sid: string, id: string, pid: string) => post<Order>(`/api/orders/${id}/reschedule`, { session_id: sid, product_id: pid }),
+  cancel: (sid: string, id: string) => postIdem<Order>(`/api/orders/${id}/cancel`, { session_id: sid }),
+  demoAdvance: (sid: string, id: string, days: number) => post<Order>(`/api/demo/orders/${id}/advance`, { session_id: sid, days }),
+  demoFailFeasibility: (sid: string, id: string, pid: string) => post<Order>(`/api/demo/orders/${id}/fail-feasibility`, { session_id: sid, product_id: pid }),
 };
 
 export const inr = (n: number) => "₹" + n.toLocaleString("en-IN");

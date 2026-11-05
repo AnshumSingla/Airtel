@@ -32,7 +32,8 @@ Planned stack: FastAPI (Python 3.11) single-instance modular monolith · React +
 | KYC pipeline: in-memory OCR, quality gate, deskew, checks, owner-confirmed repairs, line eligibility, encrypted fields | Built, tested | `app/kyc/` | `evidence/kyc_pipeline/report.md` (12/12 applicants match, 0 false accepts) |
 | Consent ledger ("Your choices"), withdrawal effects, End and delete | Built, tested | `app/privacy/consent.py`, `app/kyc/api.py` | `tests/test_kyc_service.py` |
 | Mobile-first PWA (React + Vite + TypeScript + Tailwind, EN/HI): advisor chat with buttons, GSTIN consent card and check, editable summary card, quote with reasons, quantities, add-ons and illustrative tax, accept (mock e-sign), Your choices, document upload with outcome and GSTIN confirmation, End and delete | Built; walked through in a browser at phone size | `frontend/` | no automated UI tests yet |
-| Orders/tracker, back office, P4/P5, session cookies + CSRF, scheduled retention job, UI tests, CI | **Not built yet** | | |
+| Orders and tracker: order and line state machines, KYC-driven holds, continue without excluded items, simulated feasibility and installs, substitute offer, reschedule, cancel, idempotent commands, simulated message inbox, demo clock | Built, tested; walked through in a browser | `app/orders/`, `frontend/src/screens/Tracker.tsx` | `tests/test_orders.py` |
+| Back office, P4/P5, session cookies + CSRF, scheduled retention job, UI tests, CI | **Not built yet** | | |
 
 Run it (Windows, Python 3.11):
 

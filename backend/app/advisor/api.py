@@ -61,6 +61,11 @@ def confirm(sid: str, body: ConfirmIn, request: Request) -> dict:
 def end(sid: str, request: Request) -> dict:
     """'End and delete' (POLICIES.md §2): session, chat, drafts and KYC data go; consent events are unlinked."""
     st = request.app.state
+    if hasattr(st, "orders") and st.orders.open_orders_for_session(sid):
+        # POLICIES.md §2: order data can't be removed on its own; cancel the order first.
+        raise HTTPException(409, "you have an open order; cancel it first, then End and delete")
+    if hasattr(st, "orders"):
+        st.orders.delete_for_session(sid)   # demo: closed/cancelled orders go with the session
     kyc_deleted = st.kyc.delete_for_session(sid) if hasattr(st, "kyc") else 0
     unlinked = st.consent.unlink(sid) if hasattr(st, "consent") else 0
     return {"deleted": _svc(request).end(sid), "kyc_cases_deleted": kyc_deleted, "consent_events_unlinked": unlinked}

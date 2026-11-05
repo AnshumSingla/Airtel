@@ -5,17 +5,37 @@ import { Btn, Card, Chip, ErrorNote } from "../ui";
 
 const SLOTS = ["gst_certificate", "udyam_certificate", "address_proof", "signatory_id"] as const;
 
-export function Kyc({ sid, productIds, names }: { sid: string; productIds: string[]; names: Record<string, string> }) {
+export function Kyc({ sid, productIds, names, existingCase, onCase, onSendToOrder }: {
+  sid: string; productIds: string[]; names: Record<string, string>;
+  existingCase: string | null; onCase: (id: string) => void; onSendToOrder: (caseId: string) => Promise<void>;
+}) {
   const { t } = useTranslation();
-  const [caseId, setCaseId] = useState<string | null>(null);
+  const [caseId, setCaseId] = useState<string | null>(existingCase);
   const [uploads, setUploads] = useState<Record<string, Upload | "reading">>({});
   const [view, setView] = useState<KycView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [specimens, setSpecimens] = useState<Record<string, string[]> | null>(null);
+  const [setId, setSetId] = useState("K03");
+  useEffect(() => { api.specimens().then((s) => setSpecimens(s.sets)).catch(() => setSpecimens(null)); }, []);
+
+  async function uploadSpecimenSet() {
+    if (!specimens) return;
+    for (const slot of SLOTS) {
+      if (specimens[setId]?.includes(slot)) await pick(slot, await api.specimenFile(setId, slot));
+    }
+  }
 
   useEffect(() => {
-    api.openCase(sid).then((c) => setCaseId(c.case_id)).catch((e) => setError(e.message));
-  }, [sid]);
+    if (existingCase) return;   // back from the tracker to fix a document: same case, same uploads
+    api.openCase(sid).then((c) => { setCaseId(c.case_id); onCase(c.case_id); }).catch((e) => setError(e.message));
+  }, [sid, existingCase, onCase]);
+
+  async function send() {
+    if (!caseId) return;
+    setBusy(true); setError(null);
+    try { await onSendToOrder(caseId); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
 
   async function pick(slot: string, file: File | undefined) {
     if (!file || !caseId) return;
@@ -44,6 +64,15 @@ export function Kyc({ sid, productIds, names }: { sid: string; productIds: strin
     <div className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold">{t("kyc.title")}</h2>
       <p className="text-sm text-ink-600">{t("kyc.hint")}</p>
+      {specimens && (
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-warn-600 bg-warn-50/60 p-2.5 text-xs">
+          <span className="text-warn-600">{t("kyc.demoSpecimens")}</span>
+          <select aria-label={t("kyc.demoSpecimens")} className="rounded border border-slate-300 bg-white px-1.5 py-1" value={setId} onChange={(e) => setSetId(e.target.value)}>
+            {Object.keys(specimens).map((s) => <option key={s}>{s}</option>)}
+          </select>
+          <Btn variant="outline" className="!px-2.5 !py-1 text-xs" disabled={!caseId} onClick={uploadSpecimenSet}>{t("kyc.useSet")}</Btn>
+        </div>
+      )}
       {SLOTS.map((slot) => {
         const u = uploads[slot];
         return (
@@ -94,6 +123,9 @@ export function Kyc({ sid, productIds, names }: { sid: string; productIds: strin
               </div>
             </div>
           ))}
+          {view.confirm.length === 0 && (
+            <Btn className="mt-4 w-full" disabled={busy} onClick={send}>{t("tracker.sendToOrder")}</Btn>
+          )}
           {view.lines && view.lines.length > 0 && (
             <div className="mt-4">
               <p className="text-sm font-semibold">{t("kyc.linesTitle")}</p>

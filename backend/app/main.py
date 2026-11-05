@@ -24,6 +24,8 @@ from app.kyc.api import router as kyc_router
 from app.kyc.ocr import OcrPool
 from app.kyc.registry import DbRegistry
 from app.kyc.service import KycService
+from app.orders.api import router as orders_router
+from app.orders.service import OrderService
 from app.privacy.consent import ConsentLedger
 from app.privacy.crypto import FieldCipher
 from app.advisor.lexicon import build_lexicon
@@ -92,6 +94,7 @@ async def lifespan(app: FastAPI):
     app.state.ocr_pool = OcrPool()
     app.state.kyc = KycService(engine, DbRegistry(engine), app.state.consent, cipher, app.state.clock, cat,
                                pool=app.state.ocr_pool)
+    app.state.orders = OrderService(engine, cat)
     yield
     app.state.ocr_pool.shutdown()
     engine.dispose()
@@ -100,6 +103,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Udyam Digital", lifespan=lifespan)
 app.include_router(advisor_router)
 app.include_router(kyc_router)
+app.include_router(orders_router)
 
 
 @app.get("/api/health")

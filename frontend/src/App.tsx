@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, ApiError, type Options, type Recommendation, type Turn } from "./api";
+import { api, ApiError, orders, type Options, type Order, type Recommendation, type Turn } from "./api";
 import { Chat } from "./screens/Chat";
 import { Choices } from "./screens/Choices";
 import { Kyc } from "./screens/Kyc";
 import { QuoteScreen } from "./screens/QuoteScreen";
 import { Summary } from "./screens/Summary";
+import { Tracker } from "./screens/Tracker";
 import { Btn, Card, ErrorNote } from "./ui";
 
-type Step = "start" | "chat" | "summary" | "quote" | "choices" | "kyc" | "ended";
+type Step = "start" | "chat" | "summary" | "quote" | "choices" | "kyc" | "tracker" | "ended";
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -18,6 +19,9 @@ export default function App() {
   const [summaryTurn, setSummaryTurn] = useState<Turn | null>(null);
   const [rec, setRec] = useState<Recommendation | null>(null);
   const [accepted, setAccepted] = useState<{ version: number; ids: string[] } | null>(null);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [caseId, setCaseId] = useState<string | null>(null);
+  const rememberCase = useCallback((id: string) => setCaseId(id), []);
   const [options, setOptions] = useState<Options | null>(null);
   const [demoDate, setDemoDate] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -31,7 +35,7 @@ export default function App() {
   useEffect(() => { window.scrollTo({ top: 0 }); }, [step]);
 
   function reset(msg?: string) {
-    setSid(null); setFirst(null); setSummaryTurn(null); setRec(null); setAccepted(null);
+    setSid(null); setFirst(null); setSummaryTurn(null); setRec(null); setAccepted(null); setOrder(null); setCaseId(null);
     setStep("start"); setError(msg ?? null);
   }
 
@@ -55,11 +59,30 @@ export default function App() {
   }
 
   async function endAndDelete() {
-    if (sid) { try { await api.end(sid); } catch { /* already gone */ } }
+    if (sid) {
+      try { await api.end(sid); }
+      catch (e) {
+        if (e instanceof ApiError && e.status === 409) { setError(t("tracker.openOrder")); return; }
+        /* 404: already gone */
+      }
+    }
     reset(); setStep("ended");
   }
 
-  const steps: [Step[], string][] = [[["start", "chat", "summary"], "advisor"], [["quote"], "quote"], [["choices", "kyc"], "kyc"]];
+  async function accepted_(version: number, items: { product_id: string }[]) {
+    if (!sid) return;
+    setAccepted({ version, ids: items.map((i) => i.product_id) });
+    try { setOrder(await orders.create(sid, version)); setStep("choices"); }
+    catch (e) { setError(t("errors.generic", { msg: (e as Error).message })); }
+  }
+
+  async function sendToOrder(kycCase: string) {
+    if (!sid || !order) return;
+    setOrder(await orders.submitKyc(sid, order.order_id, kycCase));
+    setStep("tracker");
+  }
+
+  const steps: [Step[], string][] = [[["start", "chat", "summary"], "advisor"], [["quote"], "quote"], [["choices", "kyc"], "kyc"], [["tracker"], "order"]];
   const names = Object.fromEntries((rec?.lines ?? []).map((l) => [l.product_id, l.name]));
 
   return (
@@ -108,7 +131,7 @@ export default function App() {
           <Summary summary={summaryTurn.summary} options={options} busy={busy} onConfirm={confirm} />
         )}
         {step === "quote" && sid && rec && (
-          <QuoteScreen sid={sid} rec={rec} onAccepted={(v, items) => { setAccepted({ version: v, ids: items.map((i) => i.product_id) }); setStep("choices"); }} />
+          <QuoteScreen sid={sid} rec={rec} onAccepted={accepted_} />
         )}
         {step === "choices" && sid && (
           <>
@@ -116,7 +139,8 @@ export default function App() {
             <Choices sid={sid} onDone={(p3) => (p3 ? setStep("kyc") : setStep("choices"))} />
           </>
         )}
-        {step === "kyc" && sid && <Kyc sid={sid} productIds={accepted?.ids ?? []} names={names} />}
+        {step === "kyc" && sid && <Kyc sid={sid} productIds={accepted?.ids ?? []} names={names} existingCase={caseId} onCase={rememberCase} onSendToOrder={sendToOrder} />}
+        {step === "tracker" && sid && order && <Tracker sid={sid} order={order} setOrder={setOrder} onFixDocuments={() => setStep("kyc")} />}
         <ErrorNote message={error} />
       </main>
 
