@@ -1,6 +1,6 @@
 # Privacy gate red-team report
 
-Commit `9b1a49b` (working tree may differ). Generated locally by `backend/scripts/privacy_gate_report.py`; **not a CI run** (CI isn't set up yet).
+Commit `bac8727` (working tree may differ). Generated locally by `backend/scripts/privacy_gate_report.py`; **not a CI run** (CI isn't set up yet).
 
 The test builds the exact JSON body that the Gemini client would send (`slot_extraction_payload`) and searches it for each secret.
 
