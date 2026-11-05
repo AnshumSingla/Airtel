@@ -1,0 +1,58 @@
+"""Write evidence/privacy_gate/report.md (POLICIES.md §15, privacy gate row).
+
+Run from backend/:  .venv/Scripts/python scripts/privacy_gate_report.py
+Local run only until CI exists; the report says so.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+BACKEND = Path(__file__).resolve().parents[1]
+REPO = BACKEND.parent
+sys.path.insert(0, str(BACKEND))
+
+from app.advisor.lexicon import build_lexicon  # noqa: E402
+from app.config import load_settings  # noqa: E402
+from app.data.seed import make_engine, seed  # noqa: E402
+from app.privacy_gate.gate import PrivacyGate  # noqa: E402
+from app.privacy_gate.redteam import FIXTURES, run_redteam  # noqa: E402
+
+
+def main() -> int:
+    db = Path(tempfile.mkdtemp()) / "gate.db"
+    engine = make_engine(f"sqlite:///{db.as_posix()}")
+    seed(engine, load_settings().data_dir)
+    gate = PrivacyGate(build_lexicon(engine))
+    r = run_redteam(gate)
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                            cwd=REPO).stdout.strip() or "unknown"
+    lines = ["# Privacy gate red-team report", "",
+             f"Commit `{commit}` (working tree may differ). Generated locally by "
+             "`backend/scripts/privacy_gate_report.py`; **not a CI run** (CI isn't set up yet).",
+             "", "The test builds the exact JSON body that the Gemini client would send "
+             "(`slot_extraction_payload`) and searches it for each secret.", "",
+             f"**Result: {'PASS' if r.passed else 'FAIL'}**: {len(r.leaks)} unexpected leaked tokens.", "",
+             "| Category | Messages | Refused (no call) | Leaked tokens |", "|---|---|---|---|"]
+    for cat, s in r.per_category.items():
+        lines.append(f"| {cat} | {s['messages']} | {s['refused']} | {s['leaked_tokens']} |")
+    lines += ["", "## Unexpected leaks (false negatives)", ""]
+    lines += [f"- {json.dumps(x, ensure_ascii=False)}" for x in r.leaks] or ["- none"]
+    lines += ["", "## Known residual (accepted and reported)", ""]
+    lines += [f"- `{x['text']}` leaks {x['observed']}: {x['why']}" for x in r.residual]
+    lines += ["", "## Cost to understanding", "",
+              f"{r.benign_callable} of {r.benign_total} ordinary messages stay callable "
+              f"(the rest fall back to buttons). Fixtures: `{FIXTURES.relative_to(REPO).as_posix()}`."]
+    out = REPO / "evidence" / "privacy_gate" / "report.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+    return 0 if r.passed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

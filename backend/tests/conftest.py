@@ -27,3 +27,17 @@ def seeded_engine(tmp_path_factory, data_dir):
     seed(engine, data_dir)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def lex(seeded_engine):
+    from app.advisor.lexicon import build_lexicon
+
+    return build_lexicon(seeded_engine)
+
+
+@pytest.fixture(scope="session")
+def cat(data_dir):
+    from app.catalogue.models import load_catalogue_csv
+
+    return load_catalogue_csv(data_dir / "product_catalogue.csv")

@@ -1,0 +1,30 @@
+# Privacy gate red-team report
+
+Commit `9b1a49b` (working tree may differ). Generated locally by `backend/scripts/privacy_gate_report.py`; **not a CI run** (CI isn't set up yet).
+
+The test builds the exact JSON body that the Gemini client would send (`slot_extraction_payload`) and searches it for each secret.
+
+**Result: PASS**: 0 unexpected leaked tokens.
+
+| Category | Messages | Refused (no call) | Leaked tokens |
+|---|---|---|---|
+| latin_names | 4 | 1 | 0 |
+| devanagari_names | 2 | 0 | 0 |
+| addresses | 4 | 0 | 0 |
+| numbers_in_words | 2 | 2 | 0 |
+| phones_emails_obfuscated | 4 | 1 | 0 |
+| identifiers | 3 | 2 | 0 |
+| mixed_script | 2 | 1 | 0 |
+| prompt_injection | 2 | 1 | 0 |
+
+## Unexpected leaks (false negatives)
+
+- none
+
+## Known residual (accepted and reported)
+
+- `My partner Surat Singh handles the shop` leaks ['surat']: a personal name that is also an allowlisted city name passes the gate (POLICIES.md §5.2 residual risk)
+
+## Cost to understanding
+
+12 of 12 ordinary messages stay callable (the rest fall back to buttons). Fixtures: `backend/tests/fixtures/privacy_redteam.json`.
