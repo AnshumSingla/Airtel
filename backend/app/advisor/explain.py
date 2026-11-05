@@ -102,6 +102,11 @@ def _lang(language: str) -> str:
 
 
 def template_sentence(reason: Reason, segment: str, language: str, product_id: str) -> str:
+    text = _template_sentence(reason, segment, language, product_id)
+    return text[:1].upper() + text[1:]
+
+
+def _template_sentence(reason: Reason, segment: str, language: str, product_id: str) -> str:
     lang = _lang(language)
     t = _TEMPLATES[lang]
     seg = SEGMENT_LABEL[lang][segment]

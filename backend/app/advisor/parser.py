@@ -62,10 +62,16 @@ def _number(tok: str) -> int | None:
     return NUMBER_WORDS.get(t)
 
 
+# Only these English words may take a count *after* them ("staff of 12", "outlets: 4").
+# Hindi/Hinglish counts come before the noun, and "hum log" ("we") is a pronoun, so
+# looking forward from "log" would read "hum log ek hi jagah" as one employee.
+_FORWARD_COUNT_WORDS = {"staff", "employees", "people", "workers", "team", "branches", "outlets",
+                        "sites", "locations", "stores"}
+
+
 def _count_near(tokens: list[str], i: int) -> int | None:
-    """A number up to 2 tokens before (skipping 'only'-words) or 2 after token i."""
-    back = [j for j in range(i - 1, max(-1, i - 4), -1)]
-    for j in back:
+    """A number just before token i (skipping 'only'/'of' words), or right after it for English nouns."""
+    for j in range(i - 1, max(-1, i - 4), -1):
         if tokens[j] in ONLY_WORDS:
             continue
         n = _number(tokens[j])
@@ -73,10 +79,14 @@ def _count_near(tokens: list[str], i: int) -> int | None:
             return n
         if tokens[j] not in {"ka", "ki", "ke", "of", "का", "की", "के"}:
             break
-    for j in range(i + 1, min(len(tokens), i + 3)):
-        n = _number(tokens[j])
-        if n is not None:
-            return n
+    if tokens[i] in _FORWARD_COUNT_WORDS:
+        k = i + 1
+        if k < len(tokens) and tokens[k] == "of":
+            k += 1
+        if k < len(tokens):
+            n = _number(tokens[k])
+            if n is not None and tokens[k] != "do":   # English "do" is never a count here
+                return n
     return None
 
 

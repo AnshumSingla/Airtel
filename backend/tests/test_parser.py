@@ -73,5 +73,14 @@ def test_backup_is_disambiguated(lex):
     assert parse("need cloud backup for files", lex).needs == {"P17"}
 
 
+def test_hum_log_is_a_pronoun_not_a_headcount(lex):
+    r = parse("hum log ek hi jagah se kaam karte hain", lex)
+    assert "employees" not in r.slots and r.slots["sites"] == 1
+
+
+def test_english_count_after_noun(lex):
+    assert parse("staff of 12 and outlets 4", lex).slots == {"employees": 12, "sites": 4}
+
+
 def test_do_as_english_word_is_not_a_count(lex):
     assert "sites" not in parse("do you have fibre in Pune", lex).slots
