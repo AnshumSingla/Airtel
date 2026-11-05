@@ -101,5 +101,5 @@ Slowest item about 14 days (SD-WAN, indicative); the pilot sets no install-speed
 | Case | Profile | Asked for | Engine result |
 |---|---|---|---|
 | N1 | Tier 2, 12 staff, GSTIN active | P03 Biz Fibre 1G | `EXCL_TIER` → suggests P02 300 Mbps, owner confirms |
-| N2 | Tier 2, 3 staff, no GSTIN | P15 WhatsApp API + P01 | `EXCL_GSTIN_UNKNOWN` on P15 → P01 alone, with "add your GSTIN to unlock WhatsApp" |
+| N2 | Tier 2, 3 staff, no GSTIN | P15 WhatsApp API + P01 | `EXCL_GSTIN_MISSING` on P15 → P01 alone, with "add your GSTIN to unlock WhatsApp" |
 | N3 | Tier 1, 3 staff | P23 CCTV × 2 alone | `requires_one_of` unmet → the engine proposes a connectivity product chosen by need (P01 for a 1-site shop) and asks; it doesn't silently add one |

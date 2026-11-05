@@ -27,5 +27,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# local evidence scratch (CI writes committed evidence under evidence/<commit>/)
+# local SQLite database rebuilt at every boot
 backend/udyam.db*
+evidence_spike_log.txt
