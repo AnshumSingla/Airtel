@@ -63,8 +63,18 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+// CSRF (POLICIES.md §13): the server sets a readable udyam_csrf cookie with the session; every
+// state-changing request echoes it in X-CSRF-Token. The session cookie itself is HttpOnly.
+function csrfToken(): string {
+  const m = document.cookie.match(/(?:^|;s*)udyam_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  const method = (init?.method ?? "GET").toUpperCase();
+  const headers = new Headers(init?.headers);
+  if (method !== "GET" && csrfToken()) headers.set("X-CSRF-Token", csrfToken());
+  const res = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail ?? detail; } catch { /* not JSON */ }

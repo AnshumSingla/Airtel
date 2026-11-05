@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.conftest import make_client
 
 from app.orders.service import OrderService
 from app.orders.states import IllegalTransition, check_line, check_order
@@ -152,7 +152,7 @@ def test_order_journey_over_http_with_real_kyc(tmp_path, monkeypatch):
     monkeypatch.setenv("UDYAM_DB_PATH", str(tmp_path / "orders.db"))
     from app.main import app
 
-    with TestClient(app) as c:
+    with make_client(app) as c:
         sid = c.post("/api/advisor/sessions", json={"language": "en"}).json()["session_id"]
         for a in ["__set:segment=prof", "__set:city_tier=1", "__set:employees=12", "__set:sites=1",
                   "__set:has_gstin=true", "__need:none"]:
@@ -185,7 +185,7 @@ def test_demo_specimens_are_served_only_by_safe_name(tmp_path, monkeypatch):
     monkeypatch.setenv("UDYAM_DB_PATH", str(tmp_path / "spec.db"))
     from app.main import app
 
-    with TestClient(app) as c:
+    with make_client(app) as c:
         sets = c.get("/api/demo/specimens").json()["sets"]
         assert len(sets) == 12 and "udyam_certificate" not in sets["K05"]
         assert c.get("/api/demo/specimens/K03_gst_certificate").content[:4] == b"\x89PNG"

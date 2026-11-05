@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+from tests.conftest import make_client
 
 
 def test_app_boots_seeds_and_serves(tmp_path, monkeypatch):
@@ -8,7 +8,7 @@ def test_app_boots_seeds_and_serves(tmp_path, monkeypatch):
     monkeypatch.setenv("UDYAM_CLOCK_MODE", "demo")
     from app.main import app
 
-    with TestClient(app) as client:
+    with make_client(app) as client:
         health = client.get("/api/health").json()
         assert health["status"] == "ok"
         assert health["business_as_of"] == "2026-07-15" and health["demo_clock"] is True
@@ -25,7 +25,7 @@ def test_advisor_over_http(tmp_path, monkeypatch):
     monkeypatch.delenv("ADVISOR_MODE", raising=False)
     from app.main import app
 
-    with TestClient(app) as client:
+    with make_client(app) as client:
         start = client.post("/api/advisor/sessions", json={"language": "en"}).json()
         sid = start["session_id"]
         assert start["expecting"] == "segment" and start["buttons"]
@@ -42,7 +42,9 @@ def test_advisor_over_http(tmp_path, monkeypatch):
         assert "P10" not in ids and any(e["product_id"] == "P10" for e in rec["excluded"])
         assert {"P02", "P09", "P19", "P23", "P08"} <= ids
         assert client.post(f"/api/advisor/sessions/{sid}/end").json()["deleted"] is True
-        assert client.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"}).status_code == 404
+        # The cookies were cleared, so the request is refused (no CSRF token) before it reaches the session.
+        assert client.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"}).status_code in (403, 404)
+        assert "udyam_sid" not in client.cookies
         assert client.post("/api/advisor/sessions", json={"language": "fr"}).status_code == 422
 
 
@@ -50,7 +52,7 @@ def test_quote_preview_accept_and_gstin_check(tmp_path, monkeypatch):
     monkeypatch.setenv("UDYAM_DB_PATH", str(tmp_path / "api3.db"))
     from app.main import app
 
-    with TestClient(app) as client:
+    with make_client(app) as client:
         opts = client.get("/api/advisor/options").json()
         assert {s["code"] for s in opts["segments"]} == {"micro", "prof", "multi", "mfg"} and len(opts["cities"]) == 22
         sid = client.post("/api/advisor/sessions", json={"language": "en"}).json()["session_id"]

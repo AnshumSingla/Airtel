@@ -39,6 +39,8 @@ from app.data.seed import make_engine, seed
 from app.llm.client import LLMClient, ModelChain, RateLimiter
 from app.privacy_gate.gate import PrivacyGate
 from app.privacy_gate.redteam import run_redteam
+from app.security import logs as security_logs
+from app.security.web import RateLimiter, SecurityMiddleware
 
 log = logging.getLogger("udyam")
 
@@ -100,7 +102,10 @@ async def lifespan(app: FastAPI):
     engine.dispose()
 
 
+security_logs.install()
 app = FastAPI(title="Udyam Digital", lifespan=lifespan)
+app.state.rate_limiter = RateLimiter()
+app.add_middleware(SecurityMiddleware, limiter=app.state.rate_limiter)
 app.include_router(advisor_router)
 app.include_router(kyc_router)
 app.include_router(orders_router)

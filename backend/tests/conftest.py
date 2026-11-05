@@ -3,7 +3,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import os
+
 import pytest
+
+# Many sessions are started from one test process; keep the real limits for test_security.py only.
+os.environ.setdefault("UDYAM_RATE_LIMIT_SCALE", "1000")
 
 BACKEND = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND.parent
@@ -41,3 +46,18 @@ def cat(data_dir):
     from app.catalogue.models import load_catalogue_csv
 
     return load_catalogue_csv(data_dir / "product_catalogue.csv")
+
+
+def make_client(app):
+    """A TestClient that behaves like the PWA: it echoes the CSRF cookie in X-CSRF-Token."""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(app)
+
+    def add_csrf(request):
+        token = client.cookies.get("udyam_csrf")
+        if token and "x-csrf-token" not in request.headers:
+            request.headers["x-csrf-token"] = token
+
+    client.event_hooks["request"].append(add_csrf)
+    return client

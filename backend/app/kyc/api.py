@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.advisor.service import SessionNotFound
 from app.kyc.ocr import MAX_BYTES, OcrBusy
 from app.kyc.service import CaseNotFound, ConsentRequired
+from app.security.web import cookie_sid, require_owner
 
 router = APIRouter(prefix="/api", tags=["consent", "kyc"])
 
@@ -45,6 +46,7 @@ class ConfirmIn(BaseModel):
 
 
 def _session_exists(request: Request, sid: str) -> None:
+    require_owner(request, sid)
     try:
         request.app.state.advisor._load(sid)
     except SessionNotFound:
@@ -63,6 +65,7 @@ def give_consent(body: ConsentIn, request: Request) -> dict:
 def withdraw(body: WithdrawIn, request: Request) -> dict:
     """Processing for the purpose stops now (POLICIES.md §2 rule 3)."""
     st = request.app.state
+    _session_exists(request, body.session_id)
     st.consent.record(body.session_id, body.purpose, "withdrawn", NOTICE_VERSIONS[body.purpose])
     effects: list[str] = []
     if body.purpose in {"P2", "P3"}:
@@ -83,6 +86,18 @@ def open_case(body: CaseIn, request: Request) -> dict:
         raise HTTPException(403, str(exc))
 
 
+def _case_owned(request: Request, case_id: str) -> None:
+    """The case must belong to the session in this browser's cookie (404 otherwise)."""
+    from sqlalchemy import select
+
+    from app.kyc.service import kyc_cases
+
+    with request.app.state.engine.connect() as conn:
+        owner = conn.execute(select(kyc_cases.c.session_id).where(kyc_cases.c.case_id == case_id)).scalar()
+    if owner is None or owner != cookie_sid(request):
+        raise HTTPException(404, "case not found")
+
+
 def _call(fn, *args):
     try:
         return fn(*args)
@@ -98,6 +113,7 @@ def _call(fn, *args):
 
 @router.post("/kyc/cases/{case_id}/documents")
 async def upload(case_id: str, request: Request, doc_type: str = Form(...), file: UploadFile = File(...)) -> dict:
+    _case_owned(request, case_id)
     data = await file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "file larger than 8 MB")
@@ -108,6 +124,7 @@ async def upload(case_id: str, request: Request, doc_type: str = Form(...), file
 
 @router.post("/kyc/cases/{case_id}/submit")
 def submit(case_id: str, body: SubmitIn, request: Request) -> dict:
+    _case_owned(request, case_id)
     kyc = request.app.state.kyc
     result = _call(kyc.evaluate, case_id)
     out = kyc.view(result)
@@ -120,6 +137,7 @@ def submit(case_id: str, body: SubmitIn, request: Request) -> dict:
 
 @router.post("/kyc/cases/{case_id}/confirm-identifier")
 def confirm_identifier(case_id: str, body: ConfirmIn, request: Request) -> dict:
+    _case_owned(request, case_id)
     kyc = request.app.state.kyc
     return kyc.view(_call(kyc.confirm_identifier, case_id, body.field, body.accept))
 

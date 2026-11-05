@@ -14,6 +14,7 @@ from app.advisor.service import SessionNotFound
 from app.kyc.service import CaseNotFound, ConsentRequired
 from app.orders.service import OrderNotFound
 from app.orders.states import IllegalTransition
+from app.security.web import require_owner
 
 router = APIRouter(prefix="/api", tags=["orders"])
 
@@ -44,6 +45,7 @@ class AdvanceIn(SessionIn):
 
 
 def _owned(request: Request, order_id: str, session_id: str) -> None:
+    require_owner(request, session_id)
     try:
         if request.app.state.orders.session_of(order_id) != session_id:
             raise HTTPException(404, "order not found")
@@ -69,6 +71,7 @@ def _run(fn):
 @router.post("/orders")
 def create(body: CreateIn, request: Request, idempotency_key: str | None = Header(None)) -> dict:
     st = request.app.state
+    require_owner(request, body.session_id)
 
     def go():
         state = st.advisor._load(body.session_id)

@@ -98,7 +98,7 @@ export function Kyc({ sid, productIds, names, existingCase, onCase, onSendToOrde
           </Card>
         );
       })}
-      <Btn disabled={!caseId || busy || !Object.values(uploads).some((u) => u !== "reading")} onClick={run}>{busy ? t("kyc.checking") : t("kyc.submit")}</Btn>
+      <Btn disabled={!caseId || busy || Object.values(uploads).includes("reading") || (!existingCase && !Object.values(uploads).some((u) => u !== "reading"))} onClick={run}>{busy ? t("kyc.checking") : t("kyc.submit")}</Btn>
       <ErrorNote message={error} />
 
       {view && (

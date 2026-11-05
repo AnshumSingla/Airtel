@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.advisor.service import AdvisorService, SessionNotFound
+from app.security.web import clear_session_cookies, require_owner, set_session_cookies
 
 router = APIRouter(prefix="/api/advisor", tags=["advisor"])
 
@@ -34,13 +35,15 @@ def _svc(request: Request) -> AdvisorService:
 
 
 @router.post("/sessions")
-def start(body: StartIn, request: Request) -> dict:
+def start(body: StartIn, request: Request, response: Response) -> dict:
     sid, turn = _svc(request).start(body.language)
+    set_session_cookies(request, response, sid)   # binds the session to this browser
     return {"session_id": sid, "p1_notice_version": "p1-2026-11-05", **asdict(turn)}
 
 
 @router.post("/sessions/{sid}/messages")
 def message(sid: str, body: MessageIn, request: Request) -> dict:
+    require_owner(request, sid)
     try:
         return asdict(_svc(request).message(sid, body.text))
     except SessionNotFound:
@@ -49,6 +52,7 @@ def message(sid: str, body: MessageIn, request: Request) -> dict:
 
 @router.post("/sessions/{sid}/confirm")
 def confirm(sid: str, body: ConfirmIn, request: Request) -> dict:
+    require_owner(request, sid)
     try:
         return _svc(request).confirm(sid, body.edits)
     except SessionNotFound:
@@ -58,8 +62,9 @@ def confirm(sid: str, body: ConfirmIn, request: Request) -> dict:
 
 
 @router.post("/sessions/{sid}/end")
-def end(sid: str, request: Request) -> dict:
+def end(sid: str, request: Request, response: Response) -> dict:
     """'End and delete' (POLICIES.md §2): session, chat, drafts and KYC data go; consent events are unlinked."""
+    require_owner(request, sid)
     st = request.app.state
     if hasattr(st, "orders") and st.orders.open_orders_for_session(sid):
         # POLICIES.md §2: order data can't be removed on its own; cancel the order first.
@@ -68,6 +73,7 @@ def end(sid: str, request: Request) -> dict:
         st.orders.delete_for_session(sid)   # demo: closed/cancelled orders go with the session
     kyc_deleted = st.kyc.delete_for_session(sid) if hasattr(st, "kyc") else 0
     unlinked = st.consent.unlink(sid) if hasattr(st, "consent") else 0
+    clear_session_cookies(response)
     return {"deleted": _svc(request).end(sid), "kyc_cases_deleted": kyc_deleted, "consent_events_unlinked": unlinked}
 
 
@@ -93,6 +99,7 @@ def options(request: Request) -> dict:
 
 @router.post("/sessions/{sid}/quote")
 def quote(sid: str, body: ItemsIn, request: Request) -> dict:
+    require_owner(request, sid)
     try:
         return _svc(request).quote_preview(sid, body.items)
     except SessionNotFound:
@@ -104,6 +111,7 @@ def quote(sid: str, body: ItemsIn, request: Request) -> dict:
 @router.post("/sessions/{sid}/accept")
 def accept(sid: str, body: ItemsIn, request: Request) -> dict:
     """Accept the quote (mock e-sign): freezes an immutable quote version."""
+    require_owner(request, sid)
     try:
         return _svc(request).accept(sid, body.items)
     except SessionNotFound:

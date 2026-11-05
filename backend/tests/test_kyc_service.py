@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+from tests.conftest import make_client
 from sqlalchemy import create_engine, text
 
 from app.privacy.crypto import FieldCipher
@@ -22,7 +22,7 @@ def client(tmp_path_factory):
     os.environ.pop("KYC_FIELD_KEYS", None)
     from app.main import app
 
-    with TestClient(app) as c:
+    with make_client(app) as c:
         c.db_path = db
         yield c
     os.environ.pop("UDYAM_DB_PATH", None)
