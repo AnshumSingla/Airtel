@@ -29,3 +29,7 @@ Thumbs.db
 
 # local SQLite database rebuilt at every boot
 backend/udyam.db*
+
+# local launch config for the desktop app preview
+.claude/launch.json
+*.tsbuildinfo

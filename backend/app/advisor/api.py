@@ -64,3 +64,44 @@ def end(sid: str, request: Request) -> dict:
     kyc_deleted = st.kyc.delete_for_session(sid) if hasattr(st, "kyc") else 0
     unlinked = st.consent.unlink(sid) if hasattr(st, "consent") else 0
     return {"deleted": _svc(request).end(sid), "kyc_cases_deleted": kyc_deleted, "consent_events_unlinked": unlinked}
+
+
+class ItemsIn(BaseModel):
+    items: list[dict] = Field(..., max_length=40)
+
+
+@router.get("/options")
+def options(request: Request) -> dict:
+    """Choices for the editable summary card. No personal data."""
+    svc = _svc(request)
+    cities = sorted({v[0]: v for v in svc.lex.cities.values()}.values())
+    from app.advisor.explain import NEED_LABEL, SEGMENT_LABEL
+
+    return {
+        "segments": [{"code": c, "label": {lang: SEGMENT_LABEL[lang][c] for lang in ("en", "hi")}}
+                     for c in ("micro", "prof", "multi", "mfg")],
+        "cities": [{"name": n, "tier": t, "state": s} for n, t, s in cities],
+        "needs": [{"product_id": p, "label": {lang: NEED_LABEL[lang][p] for lang in ("en", "hi")}}
+                  for p in NEED_LABEL["en"]],
+    }
+
+
+@router.post("/sessions/{sid}/quote")
+def quote(sid: str, body: ItemsIn, request: Request) -> dict:
+    try:
+        return _svc(request).quote_preview(sid, body.items)
+    except SessionNotFound:
+        raise HTTPException(404, "session not found or expired")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post("/sessions/{sid}/accept")
+def accept(sid: str, body: ItemsIn, request: Request) -> dict:
+    """Accept the quote (mock e-sign): freezes an immutable quote version."""
+    try:
+        return _svc(request).accept(sid, body.items)
+    except SessionNotFound:
+        raise HTTPException(404, "session not found or expired")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))

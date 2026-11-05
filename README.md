@@ -31,7 +31,8 @@ Planned stack: FastAPI (Python 3.11) single-instance modular monolith · React +
 | OCR spike on all 47 KYC images | Done | `backend/scripts/` | `evidence/ocr_spike/` |
 | KYC pipeline: in-memory OCR, quality gate, deskew, checks, owner-confirmed repairs, line eligibility, encrypted fields | Built, tested | `app/kyc/` | `evidence/kyc_pipeline/report.md` (12/12 applicants match, 0 false accepts) |
 | Consent ledger ("Your choices"), withdrawal effects, End and delete | Built, tested | `app/privacy/consent.py`, `app/kyc/api.py` | `tests/test_kyc_service.py` |
-| Orders/tracker, back office, P4/P5, session cookies + CSRF, scheduled retention job, frontend, CI | **Not built yet** | | |
+| Mobile-first PWA (React + Vite + TypeScript + Tailwind, EN/HI): advisor chat with buttons, GSTIN consent card and check, editable summary card, quote with reasons, quantities, add-ons and illustrative tax, accept (mock e-sign), Your choices, document upload with outcome and GSTIN confirmation, End and delete | Built; walked through in a browser at phone size | `frontend/` | no automated UI tests yet |
+| Orders/tracker, back office, P4/P5, session cookies + CSRF, scheduled retention job, UI tests, CI | **Not built yet** | | |
 
 Run it (Windows, Python 3.11):
 
@@ -44,8 +45,14 @@ cd backend && .venv/Scripts/python -m pytest
 ```
 
 ```bash
+cd frontend && npm install && npm run build
+```
+
+```bash
 cd backend && .venv/Scripts/python -m uvicorn app.main:app --reload
 ```
+
+Then open `http://localhost:8000`: FastAPI serves the built app from `frontend/dist`. For frontend development, run `npm run dev` in `frontend/` (port 5173, proxying `/api` to port 8000).
 
 The advisor runs in scripted mode by default. To try Gemini, set `ADVISOR_MODE=llm` and `GEMINI_API_KEY` (optionally `GEMINI_MODELS`, `GEMINI_RPM`, `GEMINI_RPD`). The privacy-gate self-test still has to pass at start-up before any call is made. API docs are served at `http://localhost:8000/docs`.
 

@@ -121,3 +121,11 @@ def catalogue() -> list[dict]:
     with app.state.engine.connect() as conn:
         rows = conn.execute(select(products).order_by(products.c.product_id)).mappings().all()
     return [dict(r) for r in rows]
+
+
+# Serve the built PWA (frontend/dist) from the same origin as the API, if it has been built.
+_DIST = load_settings().data_dir.parents[1] / "frontend" / "dist"
+if _DIST.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=_DIST, html=True), name="pwa")

@@ -1,0 +1,146 @@
+import i18n from "i18next";
+import { initReactI18next } from "react-i18next";
+
+// UI chrome in English and Hindi. Advisor replies and reason sentences come from the server
+// in the owner's language (EN / HI / Hinglish).
+const en = {
+  app: "Udyam Digital", brand: "Accel Business",
+  banner: "Demo with synthetic data. Do not enter real personal information.",
+  demoDate: "Demo date: {{date}}",
+  steps: { advisor: "Advisor", quote: "Quote", kyc: "Documents", done: "Done" },
+  start: {
+    title: "Get the right bundle for your business, in a few questions",
+    p1: "To suggest a bundle we'll ask about your business type, city, size and needs. No names, phone numbers or ID numbers. This chat is deleted 24 hours after your last message, or when you tap End and delete.",
+    cta: "Start", lang: "Language",
+  },
+  chat: { placeholder: "Type your answer…", send: "Send", typing: "…", buttonsOnly: "Or tap an option" },
+  gstin: {
+    title: "Check your GSTIN (optional)",
+    notice: "With your permission we'll look up this GSTIN once in the (mock) GST registry to unlock products that need an active GSTIN. We don't keep the number.",
+    allow: "Allow and check", skip: "Not now", placeholder: "15-character GSTIN",
+    active: "Active in the mock registry", inactive: "Not active in the mock registry", not_found: "Not found in the mock registry",
+    format_invalid: "That doesn't look like a valid GSTIN",
+  },
+  summary: {
+    title: "Is this right?", business: "Business", segment: "Type", city: "City", tier: "City size", employees: "People",
+    sites: "Locations", gstin: "Has GSTIN", needs: "Needs", budget: "Monthly budget (₹, optional)", yes: "Yes", no: "No",
+    tier1: "Big city", tier2: "Smaller city", confirm: "Looks right, show my bundle", assumed: "Filled in with typical values: {{list}}",
+  },
+  quote: {
+    title: "Your bundle", why: "Why", qty: "Quantity", term: "Commitment", months: "{{n}} months", monthly: "month-to-month",
+    install_one: "Ready in about {{count}} day (indicative)", install_other: "Ready in about {{count}} days (indicative)", remove: "Remove", add: "Add", addons: "You can also add",
+    excluded: "Not included", monthlyTotal: "Monthly", oneTime: "One-time (setup)", exTax: "before tax", incl: "incl. tax",
+    firstPayment: "First payment", accept: "Accept quote", accepted: "Quote accepted (version {{v}})",
+    rateCard: "Demo rate card: prices are band midpoints from the synthetic catalogue, no discounts. Tax is an illustrative flat 18%.",
+    esign: "Accepting is a mock e-sign in this demo.",
+    tags: { YOU_TOLD_US: "You told us", SEGMENT_DEFAULT: "Popular for businesses like yours", CATALOGUE_TARGET: "Listed for your type of business", QTY_DEFAULT: "Starting quantity", INFO_OFF_TARGET: "Note" },
+  },
+  choices: {
+    title: "Your choices", intro: "Each choice is separate. Only the first is needed to place an order online.",
+    p3: "Check my documents (KYC)", p3d: "We read your 4 documents on our server, keep the extracted details (encrypted) for this application, and never store the photos.",
+    p5: "Share my application with Accel Business sales", p5d: "Optional. Lets a person call you if you get stuck.",
+    continue: "Continue", required: "Needed for online KYC",
+    declined: "Without document checks we can keep your quote for this session, but can not take the order online. Tick the second choice if you would like someone to help you instead.",
+  },
+  kyc: {
+    title: "Upload your documents", hint: "Take a clear photo of each document, flat and well lit.",
+    gst_certificate: "GST certificate", udyam_certificate: "Udyam certificate (if registered)", address_proof: "Address proof (electricity bill)",
+    signatory_id: "Authorised signatory ID", upload: "Take photo / choose file", reading: "Reading…", replace: "Replace",
+    refused: { TOO_BLURRY: "Too blurry, please retake", OCR_ERROR: "Couldn't read it, please try again", TIMEOUT: "Took too long, please try again", FILE_TOO_LARGE: "File larger than 8 MB", UNSUPPORTED_TYPE: "Only JPEG or PNG", UNREADABLE_IMAGE: "Couldn't open this image" },
+    wrongType: "This looks like a different document", submit: "Run checks", checking: "Checking…",
+    outcome: { checks_passed: "Automated checks passed", owner_action_needed: "Something needs your attention", manual_review: "A specialist will review this" },
+    notVerified: "These are automated consistency checks against a mock registry. They are not identity verification.",
+    confirmTitle: "Is this the GSTIN on your certificate?", confirmYes: "Yes, that's right", confirmNo: "No, that's wrong",
+    linesTitle: "Your accepted items", lineOk: "Can be provided", lineNo: "Can't be provided",
+  },
+  findings: {
+    DOC_MISSING: "This document is missing.", DOC_TOO_BLURRY: "The photo is too blurry. Please retake it.",
+    DOC_OCR_ERROR: "We couldn't read this photo. Please try again.", DOC_TIMEOUT: "Reading took too long. Please try again.",
+    DOC_WRONG_TYPE: "This looks like a different document.", GSTIN_UNREADABLE: "We couldn't read the GSTIN.",
+    GSTIN_CONFIRM_READING: "Please confirm how we read your GSTIN.", GSTIN_PRINTED_INVALID: "The GSTIN printed on the certificate isn't a valid GSTIN.",
+    GSTIN_NOT_FOUND: "This GSTIN isn't in the mock registry.", GSTIN_INACTIVE: "This GSTIN is not active in the mock registry.",
+    GST_NAME_MISMATCH: "The name on the GST certificate doesn't match the registry.", GST_ADDRESS_MISMATCH: "The address on the GST certificate doesn't match the registry.",
+    UDYAM_NUMBER_MISSING: "The Udyam certificate has no registration number.", UDYAM_PRINTED_INVALID: "The Udyam number isn't valid.",
+    UDYAM_NOT_FOUND: "This Udyam number isn't in the mock registry.", UDYAM_NAME_MISMATCH: "The name on the Udyam certificate doesn't match the registry.",
+    UDYAM_GST_NAME_MISMATCH: "The Udyam and GST names don't match.", UDYAM_REGISTERED_NOT_UPLOADED: "Your business has a Udyam registration. Please upload the certificate.",
+    NO_VALID_BUSINESS_PROOF: "We need an active GST registration or a valid Udyam registration.",
+    ADDRESS_PROOF_STALE: "The bill is older than 90 days. Please upload a newer one.", ADDRESS_PROOF_DATE_UNREADABLE: "We couldn't read the bill date.",
+    BILL_NAME_MISMATCH: "The name on the bill doesn't match the business.", ADDRESS_MISMATCH: "The bill address doesn't match the registered address.",
+    ID_EXPIRED: "The signatory ID has expired.", ID_VALIDITY_UNREADABLE: "We couldn't read the ID's validity date.",
+    ID_BUSINESS_MISMATCH: "The business on the ID doesn't match.", SIGNATORY_MISMATCH: "The signatory isn't the proprietor on the GST record.",
+    SIGNATORY_NOT_CHECKABLE: "We can't check the signatory against the registry for this type of business (note only).",
+    REPAIR_DISPUTED: "You told us our GSTIN reading was wrong.",
+  },
+  mydata: { title: "My data", end: "End and delete", endd: "Deletes this chat, your answers, quotes and documents now.", done: "Deleted. You can start again any time.", withdrawP3: "Withdraw document checks" },
+  errors: { generic: "Something went wrong: {{msg}}", expired: "This session has ended. Please start again." },
+  restart: "Start again",
+};
+
+const hi: typeof en = {
+  app: "उद्यम डिजिटल", brand: "Accel Business",
+  banner: "सिंथेटिक डेटा वाला डेमो। असली निजी जानकारी न डालें।",
+  demoDate: "डेमो तारीख: {{date}}",
+  steps: { advisor: "सलाहकार", quote: "कोटेशन", kyc: "दस्तावेज़", done: "पूरा" },
+  start: {
+    title: "कुछ सवालों में अपने बिज़नेस के लिए सही बंडल पाएँ",
+    p1: "बंडल सुझाने के लिए हम आपके बिज़नेस का प्रकार, शहर, आकार और ज़रूरतें पूछेंगे। नाम, फ़ोन नंबर या ID नंबर नहीं। आपके आखिरी संदेश के 24 घंटे बाद, या 'खत्म करें और मिटाएँ' दबाने पर, यह चैट मिट जाती है।",
+    cta: "शुरू करें", lang: "भाषा",
+  },
+  chat: { placeholder: "अपना जवाब लिखें…", send: "भेजें", typing: "…", buttonsOnly: "या कोई विकल्प चुनें" },
+  gstin: {
+    title: "अपना GSTIN जाँचें (वैकल्पिक)",
+    notice: "आपकी अनुमति से हम यह GSTIN एक बार (मॉक) GST रजिस्ट्री में देखेंगे, ताकि सक्रिय GSTIN वाले प्रोडक्ट खुल सकें। हम नंबर नहीं रखते।",
+    allow: "अनुमति दें और जाँचें", skip: "अभी नहीं", placeholder: "15 अक्षर का GSTIN",
+    active: "मॉक रजिस्ट्री में सक्रिय", inactive: "मॉक रजिस्ट्री में सक्रिय नहीं", not_found: "मॉक रजिस्ट्री में नहीं मिला",
+    format_invalid: "यह सही GSTIN नहीं लगता",
+  },
+  summary: {
+    title: "क्या यह सही है?", business: "बिज़नेस", segment: "प्रकार", city: "शहर", tier: "शहर का आकार", employees: "लोग",
+    sites: "जगहें", gstin: "GSTIN है", needs: "ज़रूरतें", budget: "मासिक बजट (₹, वैकल्पिक)", yes: "हाँ", no: "नहीं",
+    tier1: "बड़ा शहर", tier2: "छोटा शहर", confirm: "सही है, मेरा बंडल दिखाएँ", assumed: "आम वैल्यू से भरा: {{list}}",
+  },
+  quote: {
+    title: "आपका बंडल", why: "क्यों", qty: "संख्या", term: "अवधि", months: "{{n}} महीने", monthly: "महीने-दर-महीने",
+    install_one: "लगभग {{count}} दिन में तैयार (अनुमानित)", install_other: "लगभग {{count}} दिन में तैयार (अनुमानित)", remove: "हटाएँ", add: "जोड़ें", addons: "आप ये भी जोड़ सकते हैं",
+    excluded: "शामिल नहीं", monthlyTotal: "मासिक", oneTime: "एक बार (सेटअप)", exTax: "टैक्स से पहले", incl: "टैक्स सहित",
+    firstPayment: "पहला भुगतान", accept: "कोटेशन स्वीकार करें", accepted: "कोटेशन स्वीकार (संस्करण {{v}})",
+    rateCard: "डेमो रेट कार्ड: कीमतें सिंथेटिक कैटलॉग की रेंज के बीच की हैं, कोई छूट नहीं। टैक्स उदाहरण के लिए 18% है।",
+    esign: "इस डेमो में स्वीकार करना एक मॉक ई-साइन है।",
+    tags: { YOU_TOLD_US: "आपने बताया", SEGMENT_DEFAULT: "आप जैसे बिज़नेस में लोकप्रिय", CATALOGUE_TARGET: "आपके बिज़नेस के लिए", QTY_DEFAULT: "शुरुआती संख्या", INFO_OFF_TARGET: "नोट" },
+  },
+  choices: {
+    title: "आपकी पसंद", intro: "हर विकल्प अलग है। ऑनलाइन ऑर्डर के लिए सिर्फ पहला ज़रूरी है।",
+    p3: "मेरे दस्तावेज़ जाँचें (KYC)", p3d: "हम आपके 4 दस्तावेज़ अपने सर्वर पर पढ़ते हैं, निकाली गई जानकारी (एन्क्रिप्टेड) इस आवेदन के लिए रखते हैं, और फ़ोटो कभी नहीं रखते।",
+    p5: "मेरा आवेदन Accel Business सेल्स से साझा करें", p5d: "वैकल्पिक। अटकने पर कोई आपको कॉल कर सके।",
+    continue: "आगे बढ़ें", required: "ऑनलाइन KYC के लिए ज़रूरी",
+    declined: "दस्तावेज़ जाँच के बिना हम इस सेशन के लिए आपका कोटेशन रख सकते हैं, पर ऑनलाइन ऑर्डर नहीं ले सकते। मदद चाहिए तो दूसरा विकल्प चुनें।",
+  },
+  kyc: {
+    title: "अपने दस्तावेज़ अपलोड करें", hint: "हर दस्तावेज़ की साफ़ फ़ोटो लें, सीधी और अच्छी रोशनी में।",
+    gst_certificate: "GST सर्टिफ़िकेट", udyam_certificate: "उद्यम सर्टिफ़िकेट (अगर रजिस्टर्ड है)", address_proof: "पते का प्रमाण (बिजली बिल)",
+    signatory_id: "अधिकृत हस्ताक्षरकर्ता ID", upload: "फ़ोटो लें / फ़ाइल चुनें", reading: "पढ़ रहे हैं…", replace: "बदलें",
+    refused: { TOO_BLURRY: "बहुत धुंधला है, फिर से फ़ोटो लें", OCR_ERROR: "पढ़ नहीं पाए, फिर कोशिश करें", TIMEOUT: "बहुत समय लगा, फिर कोशिश करें", FILE_TOO_LARGE: "फ़ाइल 8 MB से बड़ी है", UNSUPPORTED_TYPE: "सिर्फ JPEG या PNG", UNREADABLE_IMAGE: "यह फ़ोटो खुल नहीं रही" },
+    wrongType: "यह कोई दूसरा दस्तावेज़ लगता है", submit: "जाँच करें", checking: "जाँच रहे हैं…",
+    outcome: { checks_passed: "स्वचालित जाँच पास", owner_action_needed: "कुछ आपको देखना होगा", manual_review: "एक विशेषज्ञ इसे देखेंगे" },
+    notVerified: "ये मॉक रजिस्ट्री के साथ स्वचालित मिलान जाँच हैं। यह पहचान सत्यापन नहीं है।",
+    confirmTitle: "क्या आपके सर्टिफ़िकेट पर यही GSTIN है?", confirmYes: "हाँ, सही है", confirmNo: "नहीं, गलत है",
+    linesTitle: "आपके स्वीकार किए आइटम", lineOk: "दिया जा सकता है", lineNo: "नहीं दिया जा सकता",
+  },
+  findings: { ...en.findings,
+    DOC_MISSING: "यह दस्तावेज़ नहीं है।", DOC_TOO_BLURRY: "फ़ोटो बहुत धुंधली है। फिर से लें।",
+    GSTIN_CONFIRM_READING: "कृपया पुष्टि करें कि हमने आपका GSTIN सही पढ़ा।", GSTIN_INACTIVE: "यह GSTIN मॉक रजिस्ट्री में सक्रिय नहीं है।",
+    NO_VALID_BUSINESS_PROOF: "हमें सक्रिय GST या वैध उद्यम रजिस्ट्रेशन चाहिए।", ADDRESS_PROOF_STALE: "बिल 90 दिन से पुराना है। नया बिल अपलोड करें।",
+    UDYAM_REGISTERED_NOT_UPLOADED: "आपके बिज़नेस का उद्यम रजिस्ट्रेशन है। सर्टिफ़िकेट अपलोड करें।",
+    GST_NAME_MISMATCH: "GST सर्टिफ़िकेट का नाम रजिस्ट्री से मेल नहीं खाता।", GSTIN_PRINTED_INVALID: "सर्टिफ़िकेट पर छपा GSTIN वैध नहीं है।",
+  },
+  mydata: { title: "मेरा डेटा", end: "खत्म करें और मिटाएँ", endd: "यह चैट, आपके जवाब, कोटेशन और दस्तावेज़ अभी मिटा देता है।", done: "मिटा दिया। आप कभी भी फिर शुरू कर सकते हैं।", withdrawP3: "दस्तावेज़ जाँच वापस लें" },
+  errors: { generic: "कुछ गड़बड़ हुई: {{msg}}", expired: "यह सेशन खत्म हो गया। फिर से शुरू करें।" },
+  restart: "फिर से शुरू करें",
+};
+
+i18n.use(initReactI18next).init({
+  resources: { en: { translation: en }, hi: { translation: hi } },
+  lng: "en", fallbackLng: "en", interpolation: { escapeValue: false },
+});
+
+export default i18n;

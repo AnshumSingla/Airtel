@@ -18,14 +18,16 @@ from app.advisor.explain import exclusion_sentence, guard_sentences, template_se
 from app.advisor.lexicon import Lexicon
 from app.advisor.parser import parse
 from app.catalogue.models import Catalogue
-from app.catalogue.recommend import SegmentStats, profile_from_slots, recommend
+from app.catalogue.recommend import SegmentStats, default_quantity, profile_from_slots, recommend
+from app.catalogue.rules import check_bundle
 from app.llm.client import LLMClient, LLMUnavailable
-from app.pricing.quote import ILLUSTRATIVE_TAX_PERCENT, RATE_CARD_VERSION
+from app.pricing.quote import ILLUSTRATIVE_TAX_PERCENT, RATE_CARD_VERSION, build_quote, unit_price
 from app.privacy_gate.gate import PrivacyGate, explanation_payload, slot_extraction_payload
 
 SESSION_IDLE = timedelta(hours=24)       # P1 without P4 (POLICIES.md §2)
 MAX_LLM_CALLS = 12                       # per session (DECISIONS.md D6a)
 MAX_TURNS_BEFORE_OFFER = 8               # POLICIES.md §4 question cap
+MAX_QUANTITY = 200
 P1_NOTICE_VERSION = "p1-2026-11-05"
 
 journey_metadata = MetaData()
@@ -300,12 +302,90 @@ class AdvisorService:
                          for e in rec.excluded],
             "dropped_for_budget": rec.dropped_for_budget,
             "notes": rec.notes,
-            "quote": {"rate_card": RATE_CARD_VERSION, "label": "Demo rate card (assumptions listed)",
-                      "tax_label": f"Tax (illustrative {ILLUSTRATIVE_TAX_PERCENT}%)",
-                      "monthly_ex_tax": q.monthly_ex_tax, "monthly_tax": q.monthly_tax,
-                      "monthly_incl_tax": q.monthly_incl_tax, "one_time_ex_tax": q.one_time_ex_tax,
-                      "one_time_tax": q.one_time_tax, "one_time_incl_tax": q.one_time_incl_tax,
-                      "first_payment": q.first_payment, "slowest_install_days": q.slowest_install_days},
+            "quote": quote_dict(q),
+            "addons": self._addons(state, {ln["product_id"] for ln in out_lines}),
             "explanation_fallbacks": fallbacks,
             "language": lang,
         }
+
+    # ------------------------------------------------------------ quote editing and acceptance
+    def _addons(self, state: dict, chosen: set[str], limit: int = 6) -> list[dict]:
+        """On-target, eligible products not in the bundle, most chosen first (owner toggles them)."""
+        profile = profile_from_slots(state["slots"])
+        out = []
+        for pid, p in self.cat.items():
+            if pid in chosen or profile.segment not in p.target_segments:
+                continue
+            [c] = check_bundle(self.cat, profile, [pid, *chosen])[:1]
+            if not c.eligible:
+                continue
+            qty, _ = default_quantity(self.cat, pid, profile.segment, profile.employees, profile.sites)
+            out.append({"product_id": pid, "name": p.name, "description": p.description, "unit": p.unit,
+                        "default_quantity": qty, "unit_monthly": unit_price(p), "setup_per_unit": p.setup_fee,
+                        "share": round(self.stats.share(profile.segment, pid), 2)})
+        out.sort(key=lambda a: (-a["share"], a["product_id"]))
+        return out[:limit]
+
+    def quote_preview(self, sid: str, items: list[dict]) -> dict:
+        state = self._load(sid)
+        return self._preview(state, items)
+
+    def _preview(self, state: dict, items: list[dict]) -> dict:
+        if "confirmed_card" not in state:
+            raise ValueError("confirm the summary card first")
+        clean: list[tuple[str, int]] = []
+        for it in items:
+            pid, qty = it.get("product_id"), it.get("quantity")
+            if pid not in self.cat or not isinstance(qty, int) or not 1 <= qty <= MAX_QUANTITY:
+                raise ValueError(f"invalid line {it!r}")
+            if pid not in {c for c, _ in clean}:
+                clean.append((pid, qty))
+        profile = profile_from_slots(state["slots"])
+        checks = {c.product_id: c for c in check_bundle(self.cat, profile, [p for p, _ in clean])}
+        eligible = [(p, q) for p, q in clean if checks[p].eligible]
+        q = build_quote(self.cat, eligible)
+        lines = [{"product_id": ln.product_id, "name": ln.name, "unit": ln.unit, "quantity": ln.quantity,
+                  "unit_monthly": ln.unit_monthly, "monthly": ln.monthly, "one_time": ln.one_time,
+                  "term_months": ln.term_months, "install_days": ln.install_days,
+                  "info": list(checks[ln.product_id].info)} for ln in q.lines]
+        lang = state["language"]
+        rejected = [{"product_id": p, "name": self.cat[p].name, "codes": list(checks[p].excluded),
+                     "text": exclusion_sentence(list(checks[p].excluded), lang)} for p, _ in clean if not checks[p].eligible]
+        return {"lines": lines, "rejected": rejected, "quote": quote_dict(q),
+                "addons": self._addons(state, {p for p, _ in clean})}
+
+    def accept(self, sid: str, items: list[dict]) -> dict:
+        """Freeze an immutable quote version (POLICIES.md §7). Orders are not built yet."""
+        state = self._load(sid)
+        preview = self._preview(state, items)
+        if preview["rejected"]:
+            raise ValueError("remove the lines that can't be provided before accepting")
+        if not preview["lines"]:
+            raise ValueError("the quote is empty")
+        versions = state.setdefault("quote_versions", [])
+        snapshot = {"version": len(versions) + 1, "accepted_at": _now().isoformat(),
+                    "rate_card": RATE_CARD_VERSION, "summary": state["confirmed_card"],
+                    "lines": preview["lines"], "quote": preview["quote"]}
+        versions.append(snapshot)
+        self._save(sid, state)
+        return snapshot
+
+    def set_gstin_status(self, sid: str, status: str) -> None:
+        """Result of a consented (P2) registry check. The GSTIN itself is not stored."""
+        state = self._load(sid)
+        state["slots"]["has_gstin"] = True
+        state["slots"]["gstin_status"] = status
+        self._save(sid, state)
+
+    def slots(self, sid: str) -> dict:
+        return dict(self._load(sid)["slots"])
+
+
+def quote_dict(q) -> dict:
+    return {"rate_card": RATE_CARD_VERSION, "label": "Demo rate card (assumptions listed)",
+            "tax_label": f"Tax (illustrative {ILLUSTRATIVE_TAX_PERCENT}%)",
+            "monthly_ex_tax": q.monthly_ex_tax, "monthly_tax": q.monthly_tax,
+            "monthly_incl_tax": q.monthly_incl_tax, "one_time_ex_tax": q.one_time_ex_tax,
+            "one_time_tax": q.one_time_tax, "one_time_incl_tax": q.one_time_incl_tax,
+            "first_payment": q.first_payment, "slowest_install_days": q.slowest_install_days,
+            "longest_term_months": q.longest_term_months}

@@ -122,3 +122,31 @@ def submit(case_id: str, body: SubmitIn, request: Request) -> dict:
 def confirm_identifier(case_id: str, body: ConfirmIn, request: Request) -> dict:
     kyc = request.app.state.kyc
     return kyc.view(_call(kyc.confirm_identifier, case_id, body.field, body.accept))
+
+
+class GstinCheckIn(BaseModel):
+    session_id: str
+    gstin: str = Field(..., max_length=20)
+
+
+@router.post("/registry/gstin-check")
+def gstin_check(body: GstinCheckIn, request: Request) -> dict:
+    """One-time eligibility lookup (P2) [SIMULATED]. The GSTIN is used for this lookup only and not stored."""
+    from app.privacy.masking import mask_gstin
+    from app.registry.identifiers import validate_gstin
+
+    st = request.app.state
+    _session_exists(request, body.session_id)
+    if not st.consent.has(body.session_id, "P2"):
+        raise HTTPException(403, "P2 (one-time GSTIN check) has not been given")
+    v = validate_gstin(body.gstin)
+    base = {"registry": "Mock registry (synthetic data pack, as of 15 Jul 2026)", "simulated": True}
+    if not v.ok:
+        return {**base, "status": "format_invalid", "problems": list(v.problems)}
+    row = st.kyc.reg.gstin(v.value)
+    if row is None:
+        return {**base, "status": "not_found", "gstin": mask_gstin(v.value)}
+    status = "active" if row["status"] == "Active" else "inactive"
+    st.advisor.set_gstin_status(body.session_id, status)
+    return {**base, "status": status, "registry_status": row["status"], "gstin": mask_gstin(v.value),
+            "prefill": {"trade_name": row["trade_name"], "constitution": row["constitution"], "state": row["state"]}}
