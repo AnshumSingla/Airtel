@@ -41,6 +41,6 @@ def test_advisor_over_http(tmp_path, monkeypatch):
         # GSTIN not checked yet (no P2): SD-WAN is excluded with a reason, not silently dropped.
         assert "P10" not in ids and any(e["product_id"] == "P10" for e in rec["excluded"])
         assert {"P02", "P09", "P19", "P23", "P08"} <= ids
-        assert client.post(f"/api/advisor/sessions/{sid}/end").json() == {"deleted": True}
+        assert client.post(f"/api/advisor/sessions/{sid}/end").json()["deleted"] is True
         assert client.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"}).status_code == 404
         assert client.post("/api/advisor/sessions", json={"language": "fr"}).status_code == 422

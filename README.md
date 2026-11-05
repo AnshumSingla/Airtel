@@ -29,7 +29,9 @@ Planned stack: FastAPI (Python 3.11) single-instance modular monolith · React +
 | Privacy gate in front of Gemini | Built, tested | `app/privacy_gate/` | `evidence/privacy_gate/report.md` |
 | Gemini client (REST, model chain, rate limiter); off unless `ADVISOR_MODE=llm` + key + passing self-test | Built, tested with fakes; **not yet run against the real API** | `app/llm/` | `tests/test_llm_client.py` |
 | OCR spike on all 47 KYC images | Done | `backend/scripts/` | `evidence/ocr_spike/` |
-| Consent ledger, KYC pipeline, orders/tracker, back office, sessions/CSRF security, frontend, CI | **Not built yet** | | |
+| KYC pipeline: in-memory OCR, quality gate, deskew, checks, owner-confirmed repairs, line eligibility, encrypted fields | Built, tested | `app/kyc/` | `evidence/kyc_pipeline/report.md` (12/12 applicants match, 0 false accepts) |
+| Consent ledger ("Your choices"), withdrawal effects, End and delete | Built, tested | `app/privacy/consent.py`, `app/kyc/api.py` | `tests/test_kyc_service.py` |
+| Orders/tracker, back office, P4/P5, session cookies + CSRF, scheduled retention job, frontend, CI | **Not built yet** | | |
 
 Run it (Windows, Python 3.11):
 

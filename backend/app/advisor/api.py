@@ -59,5 +59,8 @@ def confirm(sid: str, body: ConfirmIn, request: Request) -> dict:
 
 @router.post("/sessions/{sid}/end")
 def end(sid: str, request: Request) -> dict:
-    """'End and delete' (POLICIES.md §2)."""
-    return {"deleted": _svc(request).end(sid)}
+    """'End and delete' (POLICIES.md §2): session, chat, drafts and KYC data go; consent events are unlinked."""
+    st = request.app.state
+    kyc_deleted = st.kyc.delete_for_session(sid) if hasattr(st, "kyc") else 0
+    unlinked = st.consent.unlink(sid) if hasattr(st, "consent") else 0
+    return {"deleted": _svc(request).end(sid), "kyc_cases_deleted": kyc_deleted, "consent_events_unlinked": unlinked}

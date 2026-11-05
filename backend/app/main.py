@@ -20,6 +20,12 @@ from fastapi import FastAPI
 from sqlalchemy import select
 
 from app.advisor.api import router as advisor_router
+from app.kyc.api import router as kyc_router
+from app.kyc.ocr import OcrPool
+from app.kyc.registry import DbRegistry
+from app.kyc.service import KycService
+from app.privacy.consent import ConsentLedger
+from app.privacy.crypto import FieldCipher
 from app.advisor.lexicon import build_lexicon
 from app.advisor.service import AdvisorService
 from app.catalogue.models import load_catalogue
@@ -75,14 +81,25 @@ async def lifespan(app: FastAPI):
     gate = PrivacyGate(lex)
     llm, app.state.llm_status = build_llm_client(gate, lex.allowed_tokens())
     log.info("advisor LLM %s", app.state.llm_status["llm"])
-    app.state.advisor = AdvisorService(engine, lex, load_catalogue(engine), build_segment_stats(engine), gate, llm,
+    cat = load_catalogue(engine)
+    app.state.advisor = AdvisorService(engine, lex, cat, build_segment_stats(engine), gate, llm,
                                        explain_with_llm=os.environ.get("ADVISOR_LLM_EXPLAIN") == "1")
+    app.state.consent = ConsentLedger(engine)
+    cipher = FieldCipher()
+    if cipher.ephemeral and settings.clock_mode != "demo":
+        raise RuntimeError("KYC_FIELD_KEYS must be set outside demo mode")
+    app.state.kyc_key = "ephemeral (demo; data resets on restart)" if cipher.ephemeral else "from KYC_FIELD_KEYS"
+    app.state.ocr_pool = OcrPool()
+    app.state.kyc = KycService(engine, DbRegistry(engine), app.state.consent, cipher, app.state.clock, cat,
+                               pool=app.state.ocr_pool)
     yield
+    app.state.ocr_pool.shutdown()
     engine.dispose()
 
 
 app = FastAPI(title="Udyam Digital", lifespan=lifespan)
 app.include_router(advisor_router)
+app.include_router(kyc_router)
 
 
 @app.get("/api/health")
@@ -94,6 +111,7 @@ def health() -> dict:
         "demo_clock": clock.is_fixture,
         "seeded": app.state.seed_counts,
         "advisor": app.state.llm_status,
+        "kyc_field_key": app.state.kyc_key,
     }
 
 
