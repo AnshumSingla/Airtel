@@ -1,8 +1,8 @@
 """Advisor HTTP API.
 
-Gap noted for the security step (POLICIES.md §13): session cookies, CSRF
-tokens and Origin checks are not wired in yet. The session id is a random
-192-bit token returned in the body for now.
+Security (POLICIES.md §13, app/security/web.py): starting a session sets an HttpOnly
+session cookie and a CSRF cookie; every other route checks that the path session
+belongs to that cookie, and the middleware enforces CSRF, Origin and rate limits.
 """
 
 from __future__ import annotations

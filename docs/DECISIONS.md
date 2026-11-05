@@ -4,7 +4,7 @@ Each decision lists the options weighed, the pick, why, and what would change it
 The overriding constraint: **the submission closes 07 Nov 2026, 11:59 PM IST**, with a 2-person team. Anything that doesn't show up in a 3-minute demo or the deck has to justify its build time.
 Revised after the adversarial review in [review.md](../review.md) (see the response sections there).
 
-> **Status: specification only.** No code, tests or CI exist yet. Every control below is planned; its evidence and stop condition are in the [controls register, POLICIES.md §15](POLICIES.md#15-controls-register).
+> **Status (06 Nov 2026): specification plus a working prototype.** The backend, the PWA and a CI workflow exist on branch `build/foundation` (see the README status table). A control counts as working only where the [controls register](POLICIES.md#15-controls-register) says so, with its evidence; everything else here is still a spec.
 
 ---
 

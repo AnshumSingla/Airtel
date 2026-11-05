@@ -6,7 +6,6 @@ Writes evidence/kyc_pipeline/report.md. Run from backend/:
 
 from __future__ import annotations
 
-import subprocess
 import sys
 import tempfile
 import time
@@ -16,7 +15,9 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 REPO = BACKEND.parent
 sys.path.insert(0, str(BACKEND))
+sys.path.insert(0, str(BACKEND / "scripts"))
 
+from _commit import run_kind, short_commit  # noqa: E402
 from app.config import load_settings  # noqa: E402
 from app.data.seed import make_engine, seed  # noqa: E402
 from app.kyc.checks import evaluate  # noqa: E402
@@ -51,10 +52,10 @@ def main() -> int:
             (applicant not in AFTER_CONFIRM or after == AFTER_CONFIRM[applicant])
         ok_all &= match
         rows.append((applicant, expected, res.outcome, after, ", ".join(f.code for f in res.findings) or "none", match))
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=REPO).stdout.strip()
+    commit = short_commit(REPO)
     lines = ["# KYC pipeline vs answer key", "",
              f"Commit `{commit}` (working tree may differ). Production pipeline (`app.kyc`): bytes in memory -> "
-             "quality gate -> deskew -> RapidOCR -> field extraction -> checks. Local run, not CI.", "",
+             f"quality gate -> deskew -> RapidOCR -> field extraction -> checks. **{run_kind()}**.", "",
              f"**Result: {'PASS' if ok_all else 'FAIL'}**. {n} images, mean {total_s / n:.1f} s per image.", "",
              "| Applicant | Expected | Got | After owner confirms GSTIN | Findings | Match |", "|---|---|---|---|---|---|"]
     lines += [f"| {a} | `{e}` | `{g}` | {f'`{x}`' if x else ''} | {fs} | {'yes' if m else '**NO**'} |"

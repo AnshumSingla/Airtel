@@ -1,7 +1,7 @@
 # Udyam Digital: solution architecture
 
 > Submitted to **Airtel SYNC 2026, Digital Track** (Unstop). The case document is titled **"Project Udyam Digital", YTL Hackathon 2026, Enterprise Track A** (fictional operator Accel Telecom / Accel Business). We use both names this way everywhere.
-> Status: design under review (see [review.md](../review.md)); **specification only: no application code, tests or CI yet.** Every control described here is planned; evidence and stop conditions are in [POLICIES.md §15](POLICIES.md#15-controls-register). Rules and definitions: [POLICIES.md](POLICIES.md). Choices and trade-offs: [DECISIONS.md](DECISIONS.md).
+> Status: design reviewed over five rounds ([review.md](../review.md)). **Status (06 Nov 2026): specification plus a working prototype.** The backend, the PWA and a CI workflow exist on branch `build/foundation` (see the README status table). A control counts as working only where the [controls register](POLICIES.md#15-controls-register) says so, with its evidence; everything else here is still a spec.
 
 ## 1. What we are building, and what we are not claiming
 

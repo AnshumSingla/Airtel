@@ -1,7 +1,7 @@
 """Consent ("Your choices") and KYC HTTP API.
 
-Gap for the security step (POLICIES.md §13): session cookies, CSRF and Origin
-checks aren't wired yet; ids are random tokens passed in the request.
+Security (POLICIES.md §13): the named session must be the one in this browser's
+cookie, and a KYC case must belong to it (404 otherwise).
 """
 
 from __future__ import annotations

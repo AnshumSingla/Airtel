@@ -1,6 +1,6 @@
 # Business rules and policies (prototype)
 
-> **Status: specification only.** No application code, tests or CI exist yet. Every control in this file is **planned**. Where a sentence says the system "does" something, read it as "is specified to". The status and planned evidence for each control are tracked in the [controls register (§15)](#15-controls-register), and a control counts as done only when its evidence exists there.
+> **Status (06 Nov 2026): specification plus a working prototype.** The backend, the PWA and a CI workflow exist on branch `build/foundation` (see the README status table). A control counts as working only where the [controls register](#15-controls-register) says so, with its evidence; everything else here is still a spec.
 
 This file defines the rules the code will implement. Each rule carries one of three labels, which also show up in the UI and the deck:
 
@@ -336,6 +336,14 @@ If the applicant has **no** valid Udyam registration either, there is no valid b
 
 **Rate limits and sizes:** per-IP limits on public routes; uploads JPEG/PNG ≤ 8 MB, 4 per case; request timeout 30 s.
 
+**As built (06 Nov), owner side** (`backend/app/security/`, tested in `backend/tests/test_security.py`):
+- **Session binding:** starting an advisor session sets `udyam_sid` (HttpOnly, SameSite=Lax, 24 h, Secure when the request arrived over HTTPS, including behind a proxy that sets `X-Forwarded-Proto`) and a readable `udyam_csrf` cookie. Every owner route checks that the session, KYC case or order it touches belongs to `udyam_sid` and answers **404**, not 403, so an attacker can't probe whether an id exists. A second browser with its own valid session and CSRF token gets 404 on all 11 attack calls in the test. "End and delete" clears both cookies.
+- **CSRF and Origin:** every state-changing `/api` request needs `X-CSRF-Token` equal to `udyam_csrf`. Starting a session is exempt, since there is no session to protect yet, but is still Origin-checked. An `Origin` header, **when present**, must be this app's origin, the Vite dev origins (`localhost:5173`), or an origin listed in `UDYAM_ALLOWED_ORIGINS`. Browsers send `Origin` on these POSTs; a request without it still needs the CSRF token.
+- **Rate limits** per IP and per minute: 10 session starts, 30 uploads, 240 other API calls. Over the limit: `429` with `Retry-After`. The limits are in-process, which fits the single-instance deployment.
+- **Headers:** CSP (`default-src 'self'`, fonts from Google Fonts, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` on JSON; CORS stays off.
+- **Logs:** a filter on the uvicorn and app loggers replaces path tokens with `[id]`, `session_id=` values with `[redacted]`, and identifier, phone and email patterns with their masks.
+- **Not built yet (back office):** staff accounts, Argon2id hashing, lockout, staff session timeouts and staff role scope. The owner-side rules above don't depend on them.
+
 ## 14. Claims register (what the owner is told, and where it comes from)
 
 Every user-visible statement about a product or the owner's situation must come from one of these sources.
@@ -358,14 +366,14 @@ Wording fixes from this rule: the P02 reason in WORKED_QUOTES §A no longer says
 
 ## 15. Controls register
 
-**Every row is planned.** Nothing is implemented or tested yet. "Evidence" is what has to exist before a control may be described as working, in the deck or anywhere else. Evidence files will be written by CI (planned GitHub Actions workflow `.github/workflows/ci.yml`) and committed for the demo build under `evidence/<commit>/`. The deck will cite that commit.
+Each row's **Status** says what exists. Rows marked "tested locally" pass on a developer machine. "Evidence" is what has to exist before a control may be described as working, in the deck or anywhere else. Evidence files are written by CI (`.github/workflows/ci.yml`, uploaded as the `evidence-<sha>` artefact; the backend job was reproduced in a Linux container on 06 Nov but has not yet run on GitHub). The demo build's evidence will be committed under `evidence/<commit>/`, and the deck will cite that commit.
 
 | Control | Spec | Planned evidence | Stop condition if it fails | Status |
 |---|---|---|---|---|
 | Privacy gate | §5.2 | `privacy-gate-report.md`: for each red-team category, messages run, disallowed tokens leaked (target 0), **every leaked token listed** (false negatives), plus the benign-message parse rate (utility). Asserts on the **actual outbound payload** built by the Gemini client, with the network call stubbed | Gemini provider disabled (scripted mode only) at start-up and in CI; no deploy; `GEMINI_API_KEY` is not set on the demo build until the report for that commit shows 0 leaks | **Implemented, tested locally**: `backend/app/privacy_gate/`; red-team test and start-up self-test in place; report at `evidence/privacy_gate/report.md` (0 leaks, 1 reported residual). CI not set up, so not yet an `evidence/<commit>/` file |
 | Consent and retention | §2–3 | `test_consent_retention`: P1 with P4 declined deletes the session after 24 h (clock fixture) and on "End and delete"; accepted-quote data moves to the order; withdrawals of P1–P5 delete the right rows; consent events are unlinked. Plus a screenshot or log of "End and delete" in the demo build | No deploy | **Partial, tested locally**: P3 gate on KYC, P2/P3/P1 withdrawal effects, "End and delete", consent-event unlinking, 24 h advisor-session expiry and 30-day KYC purge are built and tested; P4 resume, P5 sharing and a scheduled retention job are not built |
-| Authorisation and scope | §11, §13 | `test_scope_direct_api`: every back-office route called directly with each role's session, including partner A vs B and a referral code without P5 | No deploy | Planned |
-| CSRF / Origin | §13 | `test_csrf`: every mutating route rejects a missing or wrong token and a foreign `Origin` | No deploy | Planned |
+| Authorisation and scope | §11, §13 | `test_scope_direct_api`: every back-office route called directly with each role's session, including partner A vs B and a referral code without P5 | No deploy | **Owner side implemented, tested locally**: every owner route is bound to the session cookie; `test_security.py` makes 11 cross-session calls via the API directly, all 404. Staff roles and partner scope wait for the back office |
+| CSRF / Origin | §13 | `test_csrf`: every mutating route rejects a missing or wrong token and a foreign `Origin` | No deploy | **Implemented, tested locally**: double-submit token and Origin check (`test_security.py`) |
 | KYC field encryption | §13 | `test_kyc_crypto`: round-trip across a process restart; rotation | No deploy | **Implemented, tested locally**: Fernet key ring, restart, rotation and lost-key behaviour (`backend/tests/test_kyc_service.py`); the test also checks the database file holds no plaintext GSTIN or trade name; ephemeral key only in demo mode |
 | KYC answer key | §9 | `kyc-answer-key-report.md`: per-field and per-applicant results for 47 images, **false accepts first** | False accepts > 0 → that applicant is not used in the demo, and the deck reports the miss | **Implemented, tested locally**: production pipeline matches the drafted key for all 12 applicants, 0 false accepts (`evidence/kyc_pipeline/report.md`); per-field hand transcription of all 47 images still to do; not CI |
 | Order and line states | §10 | `test_orders`: the mixed-order example (§10) and every transition in the table, including rejected ones | No deploy | **Implemented, tested locally**: `backend/app/orders/`; the mixed-order example, every hold, feasibility failure with substitute or decline, reschedule, cancel and idempotency (`backend/tests/test_orders.py`); walked through in the browser; reviewer approval waits for the back office |

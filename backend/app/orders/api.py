@@ -1,7 +1,7 @@
 """Order and tracker API. Fulfilment is simulated.
 
-Ownership: every call names the session; the order must belong to it. (Cookie-
-bound sessions and CSRF come with the security step, POLICIES.md §13.)
+Ownership: every call names the session, which must be the one in this browser's
+cookie, and the order must belong to it (POLICIES.md §13).
 Commands accept an ``Idempotency-Key`` header.
 """
 
