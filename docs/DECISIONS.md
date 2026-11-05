@@ -1,157 +1,139 @@
-# Architecture and stack decisions (grilled)
+# Architecture and stack decisions
 
-Each decision lists the options we weighed, what we picked, why, and what would make us change it.
-The overriding constraint: **the submission closes 07 Nov 2026, 11:59 PM IST**, about 2.5 days after design freeze, with a 2-person team. Anything that does not show up in a 3-minute demo or the deck has to justify its build time.
+Each decision lists the options weighed, the pick, why, and what would change it. Detailed rules live in [POLICIES.md](POLICIES.md).
+The overriding constraint: **the submission closes 07 Nov 2026, 11:59 PM IST**, with a 2-person team. Anything that doesn't show up in a 3-minute demo or the deck has to justify its build time.
+Revised after the adversarial review in [review.md](../review.md) (see the response sections there).
+
+> **Status: specification only.** No code, tests or CI exist yet. Every control below is planned; its evidence and stop condition are in the [controls register, POLICIES.md §15](POLICIES.md#15-controls-register).
 
 ---
 
 ## D1. Monolith or services?
 
-- **Options:** microservices with a queue (one public repo for this case uses 8 Go services + Kafka); FastAPI + separate AI service + Spring backend (another repo); one modular monolith.
-- **Pick:** one FastAPI modular monolith, with clear package boundaries (`catalogue`, `pricing`, `advisor`, `kyc`, `orders`, `backoffice`, `privacy`).
-- **Why:** with 2.5 days, every extra service costs setup, ports, auth and debugging time and adds nothing judges can see. Package boundaries still let us draw a clean component diagram and argue how it splits at scale (KYC and the advisor are the first candidates to become services).
-- **Would change if:** never inside this deadline.
+- **Options:** microservices with a queue; Spring + separate AI service; one modular monolith.
+- **Pick:** one FastAPI modular monolith, **single instance**, with explicit trust boundaries (Journey API, Back-office API, domain core, advisor adapter, KYC worker pool).
+- **Why:** with 2.5 days, every extra service adds setup and debugging and nothing judges can see. Single instance lets the rate limiter, sessions and worker pool live in-process honestly.
+- **Would change if:** never inside this deadline. The deck shows how it would split (KYC and advisor first).
 
 ## D2. Backend language
 
-- **Options:** Python/FastAPI; Node/Express or Next.js API routes; Java/Spring.
 - **Pick:** Python 3.11 + FastAPI + Pydantic v2.
-- **Why:** pandas for the CSVs, scikit-learn for propensity, local OCR libraries, and every LLM SDK are all native Python. Pydantic models double as tool schemas for the LLM. Python 3.11 is already installed on this machine.
-- **Would change if:** a teammate is much faster in TypeScript; then a single Next.js app with tesseract.js is the alternative (a public repo shows it works), at the cost of weaker OCR and ML.
+- **Why:** pandas, scikit-learn, local OCR and the Gemini SDK are native Python; Pydantic models double as the LLM's JSON schema. Python 3.11 is installed here.
+- **Would change if:** a teammate is much faster in TypeScript (then a single Next.js app with tesseract.js).
 
 ## D3. Frontend
 
-- **Options:** Next.js; React + Vite SPA; server-rendered templates; Flutter.
-- **Pick:** React 18 + Vite + TypeScript + Tailwind, react-i18next, installable PWA, built and served by FastAPI.
-- **Why:** fastest to iterate, no SSR needed, one deploy unit. Mobile-first layout because the case says "on a phone". PWA install gives the app feel without app-store work.
-- **Would change if:** nothing realistic in this window.
+- **Pick:** React 18 + Vite + TypeScript + Tailwind, react-i18next, installable PWA, served by FastAPI.
+- **Why:** fastest to iterate, no SSR needed, one deploy unit, mobile-first.
 
-## D4. Database
+## D4. Database and persistence
 
-- **Options:** Postgres (Neon/Supabase), SQLite, in-memory only.
-- **Pick:** SQLite via SQLAlchemy, CSVs loaded at startup.
-- **Why:** zero setup, ships inside the Docker image, enough for a demo. SQLAlchemy keeps the swap to Postgres a connection-string change, which we state in the deck's scale story.
-- **Would change if:** the host has an ephemeral disk that wipes sessions mid-demo; then use a free managed Postgres.
+- **Options:** managed Postgres; SQLite on a persistent disk; SQLite seeded at boot on an ephemeral disk.
+- **Pick:** SQLite via SQLAlchemy, **seeded from the CSVs at every boot**. The hosted demo is ephemeral by design and says so; live demos run locally.
+- **Why:** zero setup; with synthetic data, resetting on restart is acceptable and even reduces what we hold. Writes are low (one demo user at a time), so SQLite's single-writer limit is not a problem; WAL mode is on.
+- **Would change if:** we need state to survive restarts on the hosted copy; then a free managed Postgres (SQLAlchemy keeps this to a config change plus a migration run, which we would test, not assume).
 
 ## D5. Who decides the bundle: LLM or rules?
 
-- **Options:** LLM picks from the catalogue in its prompt; LLM with RAG; LLM collects slots, rules engine decides.
-- **Pick:** LLM collects slots through tool calls; **a deterministic rules engine picks products, quantities and price**; the LLM explains the engine's reason codes; an output guard checks that every product name and rupee amount in the reply matches the engine output.
-- **Why:** correctness under live judge scenarios, reproducibility, auditability, and the data shows unchecked selling already breaks the rules (56 of 368 activated bundles). 25 products don't need RAG; they fit in code.
-- **Would change if:** never. This is the core of the pitch.
+- **Pick:** the LLM fills a fixed slot schema; the **rules engine** picks products, quantities and prices; the server renders all product/price details from IDs; the LLM writes one sentence per reason code, checked by a guard.
+- **Why:** correctness under live judge scenarios, reproducibility, and the data shows unchecked selling breaks the rules (56 of 368 activated bundles).
 
 ## D6. Which LLM
 
-- **Options:** Gemini (free tier); Groq-hosted open models (free, fast, weaker at Indic languages); Claude (paid); Sarvam (Indic-first, voice).
-- **Pick (team decision, 05 Nov): Gemini on the free tier**, through the `google-genai` SDK, behind a thin `LLMProvider` interface. A fake provider is used for tests and evals, and the scripted advisor is the fallback.
-- **Why the interface still matters:** moving to paid Gemini (or Vertex AI in an India region) for production is a config change, which is what we tell judges.
+- **Pick (team decision, 05 Nov):** **Gemini on the free tier** via `google-genai`, behind an `LLMProvider` interface, with a fake provider for tests and a scripted mode.
+- **Constraint we accept:** Google's terms for unpaid services allow submitted content to be used to improve products and read by human reviewers, and say not to submit sensitive, confidential or personal information. Therefore the free tier is **for the synthetic-data demo only**, and that is to be enforced in code rather than by a banner: a **privacy gate** (planned) runs before every outbound request (local parser first, identifiers stripped, outbound text rebuilt from an allowlisted vocabulary, no call if most tokens are masked). Raw owner text never leaves the server ([POLICIES.md §5.2](POLICIES.md#52-the-privacy-gate-runs-before-every-outbound-llm-request)).
+- **Production:** a separate `approved` profile, not built. As a production requirement, the server would refuse to start in it without a signed launch record covering region, retention and logging, human review, sub-processors, allowed data categories, age and regional terms, incidents and legal sign-off ([POLICIES.md §5.1](POLICIES.md#51-two-llm-profiles)). A paid service is **necessary, not sufficient**. We will not claim "India residency" or "zero retention".
+- **Trade-off we accept:** the gate hurts understanding of unusual phrasing and almost removes non-EN/HI conversation on the free tier (D7). We chose privacy over coverage.
 
 ## D6a. Living inside the free-tier quota
 
-**The numbers are not stable.** Google no longer publishes one fixed table: limits show per project in AI Studio. Third-party figures from the last few months range from 10 RPM / 500 requests per day for Flash down to **5 RPM / 20 requests per day** for the newest Flash. Flash-Lite models have looked more generous (around 10 RPM / 500 a day). Daily quotas reset at midnight Pacific, which is **1:30 PM IST** in November. Design for the worst case:
+1. **Day-1 check:** read the real RPM/RPD per model in AI Studio (Google no longer publishes one fixed table; third-party figures range from 500 down to 20 requests/day for Flash models). Write them into `.env.example` comments. Choose the primary model from those numbers.
+2. **Model chain from `GEMINI_MODELS`** (ordered), Flash-Lite first if its daily quota is larger.
+3. **Call budget:** the local parser handles a turn when it can; otherwise at most one gated call per owner turn (slot extraction, structured JSON), plus one explanation call when the recommendation is shown. Typical session 1–4 calls, hard cap 12, then scripted mode.
+4. **Retries:** `429` → no retry, next model. `5xx`/10 s timeout → one retry after 1 s, then next model. All fail → scripted for that turn.
+5. **Server-side limiter:** a token bucket per model in the API process (not the browser), set just under the real RPM, plus a daily counter.
+6. **Quota protection:** tests and evals use the fake provider by default; `--live` is opt-in and capped at 20 calls; a dev-only cache (off by default, never on the hosted demo) stores **gated payloads only**, keyed by hash, deleted with `make clean-cache`.
+7. **Zero-quota path:** `ADVISOR_MODE=scripted` runs the whole journey. It is rehearsed as the backup for the live demo. A separate key is kept for recording and judging. The quota-reset time is a convenience, not the plan.
 
-1. **Day-1 check:** read the actual RPM/RPD for each model in AI Studio and write them in `.env.example` comments. Pick the primary model from that, not from memory.
-2. **Primary model = the Flash-Lite tier** (higher daily quota), with a Flash model as the second entry in the fallback chain. Model names come from `GEMINI_MODELS` in the environment (ordered list), with the `-latest` aliases as defaults once verified.
-3. **One call per normal turn.** No multi-step tool loop. Each turn sends the redacted history, the profile so far and the list of missing slots, and asks for **structured JSON output** (`response_schema`): `{slots_extracted, reply, intent: ask | recommend | handoff | off_topic, language}`. The server merges the slots and decides what happens next.
-4. **One extra call on the recommendation turn only:** once the profile is complete, the server runs the rules engine and sends the reason codes for a plain-language explanation in the owner's language. The prompt forbids prices; amounts appear only on the deterministic quote card. If that call fails, we use **templated EN/HI explanations** for each reason code, so the recommendation never depends on the LLM.
-   Budget: about 6–8 calls per full advisor session.
-5. **Client-side rate limiter:** token bucket per model, set just under the real RPM. On 429 or 503, move down the chain: Flash-Lite → Flash → scripted advisor. The UI shows nothing broken; the scripted advisor continues from the same slots.
-6. **Protect the quota during development:** unit tests and the eval runner use the fake provider by default, and `--live` is opt-in and capped (for example 20 calls). Cache live responses by prompt hash in dev so reruns cost nothing.
-7. **Demo-day plan:** keep one API key (own project) only for the recording and judging, never used for development. Record the video on 7 Nov **after 1:30 PM IST**, when the daily quota has just reset. The scripted advisor is rehearsed as the backup path.
-8. **Privacy consequence:** Google's terms for unpaid API use allow it to use submitted content to improve its products (re-read the current terms before writing the privacy note). So **no personal data or identifiers go to Gemini**: GSTIN, Udyam, PAN, phone, email and names are redacted server-side before every call, and KYC documents are never sent. The privacy note says production would use a paid or Vertex AI (asia-south1) setup, where content is not used for training.
+## D7. Languages and voice (what we actually promise)
 
-- **Would change if:** the AI Studio check shows a daily quota too small for the eval run plus the demo. Then make the scripted advisor the default, use Gemini only for free-text understanding and explanations, and say so plainly.
+| Path | EN | HI / Hinglish | Tamil, Marathi, Kannada, Punjabi, Bengali, … |
+|---|---|---|---|
+| UI strings | Yes | Yes | No (JSON files can be added) |
+| Advisor, free tier (gated) | Yes | Yes | **No**: the gate's vocabulary covers EN/HI/Hinglish, so these messages fall back to buttons + a callback offer |
+| Advisor, `approved` profile (production, not built) | Yes | Yes | Planned, after the launch gate |
+| Scripted mode (no LLM) | Yes | Yes | No: EN/HI buttons + callback offer |
+| Voice typing | **Cut from the prototype and the demo.** The browser's speech service receives the audio, and we have not verified its retention, human review or regional settings for any browser. Roadmap, once a specific provider is chosen and verified ([POLICIES.md §5.3](POLICIES.md#53-voice-typing-cut-from-the-prototype)) |
 
-## D7. Languages and voice
+The deck says "English and Hindi end to end. Other Indian languages need a production AI setup that passes our privacy launch gate; the data shows why they matter (§6 of DATA_INSIGHTS)."
 
-- **Options:** UI in EN only + LLM replies in any language; UI in EN/HI; full regional UI; Bhashini/Sarvam ASR+TTS; browser Web Speech API.
-- **Pick:**
-  - UI strings in **English and Hindi** (react-i18next), structured so adding Marathi (the largest regional group, 505 leads) is a JSON file.
-  - The advisor **replies in the language the owner writes in** (Hindi, Hinglish, Tamil, Marathi, ...). The LLM does this for free; the scripted fallback covers EN/HI/Hinglish only.
-  - Voice input through the **browser Web Speech API** (`hi-IN`, `ta-IN`, `mr-IN`, ...), and optional text-to-speech of replies. No new backend, works in Chrome on Android.
-- **Why:** the data shows digital channels barely convert regional-language owners (website/WhatsApp conversion near 0% for Tamil, Kannada, Punjabi, Bengali). Language is a stated requirement and a cheap win. Server-side ASR is a stretch goal, not a day-1 build.
-- **Would change if:** Web Speech is unreliable on the demo device; then type in the video and mention voice as roadmap.
+## D8. OCR: local engine
 
-## D8. OCR: local engine or vision LLM?
+- **Pick:** RapidOCR (pip, ONNX) on in-memory images, after red-channel watermark removal and deskew; Tesseract as fallback if the day-1 spike disappoints.
+- **Why:** documents are not sent to a third-party OCR or AI vendor, which **reduces** onward transfer. It is not a privacy guarantee on its own: collection, access, retention, hosting and logging are handled separately ([POLICIES.md §3](POLICIES.md#3-data-inventory-and-retention)). The specimens are clean, fixed-layout documents, which suits classic OCR.
+- **Day-1 spike:** run on all 47 images against a hand-made answer key; report per-field accuracy and false accepts.
+- **Would change if:** field accuracy is too low after preprocessing; then a vision model under explicit consent, paid tier only, and the privacy note changes to say so.
 
-- **Options:** Tesseract (system binary, not installed here, Windows install friction); RapidOCR / PaddleOCR via pip (ONNX, no system binary); EasyOCR (heavy PyTorch); a vision LLM (Gemini/Claude) returning JSON.
-- **Pick:** **local OCR (RapidOCR via pip)**, preceded by red-channel watermark removal and deskew, followed by a label-anchored parser and checksum-guided repair. Tesseract is the fallback if RapidOCR misbehaves on day 1.
-- **Why:**
-  - **Privacy story:** KYC images never leave our server, so there is no cross-border transfer of identity documents. This is a real DPDP point and a visible difference from teams that send documents to a cloud vision model.
-  - The specimens are clean, typed, fixed-layout documents with a red diagonal watermark: ideal for classic OCR once the red channel is used.
-  - pip-only install keeps the Docker image simple.
-- **Risk:** RapidOCR accuracy on mixed alphanumerics (O/0, I/1). Mitigated by the GSTIN check digit and registry name confirmation. **Day-1 spike:** run it on all 47 images and compare against a hand-made answer key before building anything on top.
-- **Would change if:** the spike shows under ~90% field accuracy after preprocessing. Then use a vision LLM with explicit consent text and PII-free prompts, and say so in the privacy note.
+## D9. KYC outcomes
 
-## D9. KYC rules
-
-Checks we implement (all deterministic, each with an owner-facing fix hint):
-
-| Group | Check |
-|---|---|
-| Quality | blur (Laplacian variance), skew, resolution, file type/size |
-| Format | GSTIN 15-char structure, state code, embedded PAN pattern (4th char `X` accepted), mod-36 check digit; Udyam `UDYAM-SS-00-NNNNNNN` |
-| Registry | GSTIN exists and is **Active** (not Cancelled/Suspended); Udyam exists; legal/trade name and constitution agree |
-| Cross-document | names agree across GST, Udyam, ID, bill (fuzzy, token-based); address on bill matches principal place of business; GSTIN state code = address state |
-| Freshness | address proof dated no more than 90 days before 2026-07-15; signatory ID valid on 2026-07-15 |
-| Completeness | all 4 documents, or a registry match accepted in place of a missing Udyam certificate |
-| Authority | signatory name matches the proprietor/partner/director on the GST record (or a flag for specialist review) |
-
-Verdicts: `approved`, `needs_action` (owner can fix in-app), `review` (specialist), `blocked`.
-We build our own answer key for K01–K12 by inspecting every image and test the pipeline against it. Other teams' published findings (K01 cancelled GSTIN, K02 tilted, K04 blurry, K05 missing Udyam, K07 altered name, K11 stale bill) are a cross-check, not our source of truth. We have confirmed K01's GSTIN is Cancelled in the registry ourselves.
+Two results: an **applicant result** (`checks_passed`, `owner_action_needed`, `manual_review`) and a **line eligibility result** per item (`eligible` / `excluded` with a reason). A Cancelled or Suspended GSTIN excludes the GSTIN-only lines rather than stopping the whole applicant; the order waits for a one-tap new quote version without those lines, and the KYC result is reused. The old applicant-level `blocked` is removed. Required documents: ID + address proof + at least one valid business registration (GST or Udyam). Never "verified". No auto-correction of identifiers: repair candidates need the owner's confirmation, and the raw value and repair trail are kept. Identifiers link records; names and addresses only check consistency. Freshness uses an injected `business_as_of` clock (fixture 2026-07-15 in demo mode). Full definitions, thresholds, reviewer authority and appeal: [POLICIES.md §9](POLICIES.md#9-kyc-outcomes).
 
 ## D10. Pricing
 
-The catalogue gives a min–max monthly band per product. We need one transparent, repeatable rule:
+- **Data check:** historical deal values always sit inside the catalogue band, on average 48% of the way up, with no difference by tier or contract length; setup is always fee × quantity; the contract always equals the longest item minimum.
+- **Pick:** band midpoint as the demo rate card; no discounts and no "save ₹X" claim; setup × quantity; **per-item commitment terms**; an **illustrative uniform 18% tax** line, labelled as a mock rule (the catalogue has no tax categories, and its products are not all taxed the same way in reality; real quotes need a per-SKU tax category from finance); first payment shown; immutable quote versions. Labelled "demo rate card".
+- **Dropped from the earlier draft:** the contract-length slider that moved the price inside the band. The data shows no such relationship and the catalogue defines no discount schedule.
+- Rules and quantity defaults: [POLICIES.md §7](POLICIES.md#7-rate-card-and-quote). Worked examples: [WORKED_QUOTES.md](WORKED_QUOTES.md).
 
-- **Contract length sets the point in the band:** longest allowed contract → `price_min`; 12 months → midpoint; shorter (where the product allows it) → `price_max`. The owner sees the trade-off as a toggle on the quote ("Save ₹X/month with 24 months").
-- Quantity rules by unit: per site × `num_sites`; per user/device from `employee_count` (editable); per line defaults from roles (editable); cameras default 2 per site.
-- One-time setup fees shown separately; GST at 18% shown as a line, total shown both ex- and incl-GST.
-- Contract term of the bundle = the longest `min_contract_months` among the chosen items, shown up front.
-- "Compared with what you pay today" line using the stated current telecom spend.
-- **Would change if:** the team prefers tier-based pricing. Either way it lives in one module with tests.
+## D11. Recommendation logic
 
-## D11. Recommendation logic (rules engine)
-
-1. Map business type → segment (micro / professional / multi-site / manufacturer), city → tier and state.
-2. Start from the **segment starter bundle, derived from what activated customers in that segment actually bought** (for example professional offices: cloud email 100%, postpaid 599 52%, endpoint security 49%; micro: postpaid 299 100%, fibre 100 92%, POS 34%).
-3. Add products for stated needs (UPI/POS, WhatsApp catalogue, CCTV, failover, IoT, fleet).
-4. Filter on eligibility: city tier, minimum employees and sites, **active GSTIN** for GSTIN-only products.
-5. Resolve `requires_one_of` dependencies by adding the cheapest eligible connectivity product.
-6. Substitute instead of failing: tier 2 asking for 1 Gbps → 300 Mbps; no fibre → 5G AirFiber; no GSTIN → explain which products a GSTIN would unlock.
-7. If over the stated budget, drop add-ons by priority until it fits, and say which ones were dropped.
-8. Emit reason codes (`SEGMENT_BASE`, `NEED_CCTV`, `DEP_ADDED`, `SUBSTITUTED_TIER`, `BLOCKED_NO_GSTIN`, ...) that the LLM turns into plain language.
+Catalogue targeting (`target_segments`) as a **soft rule**: never a rejection, but every engine-chosen default must be on-target, and off-target owner choices are flagged `INFO_OFF_TARGET` → segment starter set from historical purchases, ranking on-target products only → needs → eligibility (active GSTIN, not just a valid check digit) → dependencies resolved by **need and site constraints, then price**, and never added silently → substitutions offered, not applied → budget trimming with a list of what was dropped → reason and exclusion codes. Details: [POLICIES.md §6](POLICIES.md#6-recommendation-rules).
 
 ## D12. Propensity score
 
-- **Options:** heuristic score; logistic regression; gradient boosting.
-- **Pick:** logistic regression on features known at lead creation (segment, source, tier, language, size, turnover band, GSTIN present and its registry status, Udyam, current internet/provider/spend, number of products of interest). No stage dates or outcomes (leakage). Compare with gradient boosting in the notebook and report cross-validated AUC; ship the LR unless GBM is clearly better, because coefficients give reason codes for the back office ("GSTIN active +", "WhatsApp source −").
-- Rank the call list by `p(activate) × expected monthly value`, not by p alone.
-- Trained offline in `ml/`, exported as JSON, scored in the API without heavy deps.
+- **Baseline first:** a transparent rules-based queue (GSTIN, segment, source, stage, days waiting).
+- **Model:** logistic regression on features recorded at lead creation. **Excluded:** current registry status (we don't know the status at lead time), stage dates, outcomes. GSTINs are unique in the leads file, so no group leakage by identifier.
+- **Validation:** time-based split (created April–May train, June test; June activation rate is 7.5%, the same as April, so no obvious censoring). Report ROC-AUC and PR-AUC against the baseline, precision at the number of leads a team can call per day, calibration, and results by language, source and segment. Accuracy is not reported (always predicting "no" is 92.6% accurate).
+- **Ranking value:** `p(activate) × expected monthly revenue`, labelled **expected revenue**. For historical leads it uses the segment median of activated deals; for live leads, the quote value. No margin claim (the data has none).
+- **Ship rule:** the model replaces the baseline queue only if it beats it on the June holdout; otherwise we show the comparison and keep the baseline.
 
 ## D13. WhatsApp front end (stretch)
 
-- **Options:** real WhatsApp Cloud API (Meta app setup, number verification: too slow and risky for the deadline); Twilio sandbox; an in-app WhatsApp-style simulator talking to the same advisor API.
-- **Pick:** if time allows, a **WhatsApp-style simulator** page that reuses the advisor endpoint, plus simulated notifications in the tracker. Real integration is roadmap.
+An in-app WhatsApp-style simulator on the same advisor API, labelled "Simulated". Real WhatsApp Cloud API is roadmap.
 
 ## D14. DigiLocker and e-sign
 
-Mocked: a "Fetch from DigiLocker" button that returns the registry-backed document for the GSTIN, and a mock e-sign step on the quote acceptance. Both are shown as the target production integration in the architecture and privacy note.
+Simulated, labelled, and shown as the production integration target.
 
 ## D15. Hosting
 
-- **Pick:** one Docker image on a free tier (Render or Railway), plus a local run for recording. Decide on day 1 by deploying the empty skeleton first; never leave deployment to the last evening.
+Render free web service from the Dockerfile, single instance, ephemeral disk, re-seeded at boot, sleeps when idle (wake before judging). Live demo and video run locally. Day 1: deploy the empty skeleton to confirm.
 
-## D16. Testing and evals
+## D16. Security (prototype)
 
-- Unit tests: GSTIN checksum and repair, eligibility, dependencies, pricing, KYC answer key (K01–K12).
-- Advisor evals: about 20 scripted scenarios modelled on what judges are likely to test (tier-2 owner asking for 1 Gbps, no-GSTIN kirana asking for WhatsApp API, 8-site restaurant chain, Hindi-only owner, budget cap, leased line for a 5-person shop, refusal or off-topic prompt). Assertions run on the **engine output**, so they are deterministic even with an LLM in the loop. By default they run on the fake provider; a capped `--live` run against Gemini is done once on day 2 and once after feature freeze (D6a).
+Concrete rules are in [POLICIES.md §13](POLICIES.md#13-security-specifics-prototype). Summary:
+- Server-side sessions (revocable) in `HttpOnly` cookies, `Secure` on the hosted HTTPS demo, `SameSite=Lax` for owners and `Strict` for staff; owner 24 h idle; staff 30 min idle / 8 h absolute; logout deletes the session.
+- Every state-changing route is `POST` and needs a CSRF token header and a matching `Origin`; CORS off.
+- Staff passwords stored as Argon2id hashes, lockout after 5 failures; no MFA in the prototype (stated gap).
+- KYC identifiers encrypted with a Fernet key ring from the environment (rotation by re-encryption; a lost key means re-upload).
+- Random UUIDs for quotes, orders and KYC cases; ownership checked on every route; role and record scope to be tested with direct API calls, not only through the UI.
+- Idempotency keys on accept, upload, KYC submit and state transitions; transitions outside the table are rejected.
+- Rate limits per IP on public routes; uploads limited to JPEG/PNG ≤ 8 MB, 4 per case; request timeout 30 s.
+- No payment is taken: payment and e-sign are simulated, so there is no duplicate-charge risk to handle beyond idempotent acceptance.
+
+## D17. Testing and evals
+
+- **All planned.** Results will be written by CI to `evidence/<commit>/` for the demo build ([POLICIES.md §15](POLICIES.md#15-controls-register)); the deck cites that commit. Until then, the docs describe controls as specified, not working.
+- Unit tests: GSTIN format and check digit, eligibility, dependencies, every worked quote and negative case, KYC answer key (K01–K12), state-machine transitions including the mixed-order example, P1-with-P4-declined deletion, consent-event unlinking, privacy-gate red-team set, CSRF rejection, and role scope via direct API calls (partner A cannot read partner B's lead; a referral code alone gives no access).
+- Advisor evals: about 20 scenarios (tier-2 asking for 1 Gbps, no-GSTIN asking for WhatsApp API, 4-site chain, Hindi-only owner, budget cap, conflicting answers, out-of-catalogue request, prompt injection, unknown city). Assertions run on the engine output, so they are deterministic. Fake provider by default; capped live runs twice.
 
 ---
 
 ## Open questions for the team
 
-1. ~~LLM key~~: decided, Gemini free tier (D6, D6a). Still to do: read the real per-model limits in AI Studio on day 1.
-2. **Deck length:** the Unstop page asks for a **7-slide PPT (PDF + PPT, file name `TeamName_CampusName`)** for this round; the case PDF asks for a business case of up to 10 slides plus a demo video, repo, architecture diagram and a 1-page privacy note. Plan: a 7-slide main deck that carries links to the video and repo, with architecture and privacy as appendix pages. Confirm on the Unstop discussion board if possible.
-3. **Registration:** registration closes 06 Nov 2026, 11:59 PM IST. Confirm the team is registered.
-4. **Team skills:** confirm both of us are comfortable with Python + React; otherwise revisit D2.
+1. ~~LLM key~~: decided, Gemini free tier. Still to do: read the real per-model limits in AI Studio.
+2. **Deck length:** Unstop asks for a 7-slide PPT (PDF + PPT, `TeamName_CampusName`); the case PDF asks for a ≤ 10-slide business case plus video, repo, architecture and privacy note. Plan: 7 main slides with links, architecture and privacy as appendix. Confirm on the Unstop discussion board if possible.
+3. **Registration** closes 06 Nov 2026, 11:59 PM IST: confirm the team is registered.
+4. **Team skills:** confirm Python + React for both of us.
+5. **Per-item vs bundle-wide terms** (D10): we chose per-item for clarity; the historical practice was bundle-wide. A business call, flagged in the deck.
+6. **Regional languages on the free tier** (D6, D7): the privacy gate rules them out of the demo. If the team wants to show Tamil or Marathi, the honest options are adding those words to the gate's vocabulary (a stretch item, limited) or showing them only as roadmap.
