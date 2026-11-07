@@ -11,7 +11,7 @@ const en = {
   start: {
     title: "Get the right bundle for your business, in a few questions",
     p1: "To suggest a bundle we'll ask about your business type, city, size and needs. No names, phone numbers or ID numbers. This chat is deleted 24 hours after your last message, or when you tap End and delete.",
-    cta: "Start", lang: "Language",
+    cta: "Start", lang: "Language", staff: "I work at Accel (back office)",
   },
   chat: { placeholder: "Type your answer…", send: "Send", typing: "…", buttonsOnly: "Or tap an option" },
   gstin: {
@@ -40,6 +40,7 @@ const en = {
     p3: "Check my documents (KYC)", p3d: "We read your 4 documents on our server, keep the extracted details (encrypted) for this application, and never store the photos.",
     p5: "Share my application with Accel Business sales", p5d: "Optional. Lets a person call you if you get stuck.",
     continue: "Continue", required: "Needed for online KYC",
+    p5partner: "Share my application with {{name}}, who referred you", p5partnerd: "Optional and separate from the choice above. Being referred gives them credit only; they see nothing unless you tick this.",
     declined: "Without document checks we can keep your quote for this session, but can not take the order online. Tick the second choice if you would like someone to help you instead.",
   },
   kyc: {
@@ -87,7 +88,7 @@ const en = {
     openOrder: "You have an open order. Cancel it first, then End and delete.",
   },
   mydata: { title: "My data", end: "End and delete", endd: "Deletes this chat, your answers, quotes and documents now.", done: "Deleted. You can start again any time.", withdrawP3: "Withdraw document checks" },
-  errors: { generic: "Something went wrong: {{msg}}", expired: "This session has ended. Please start again.", reload: "Your session needs a refresh. Reload the page (Ctrl+F5) and start again. Nothing you entered was saved." },
+  errors: { generic: "Something went wrong: {{msg}}", expired: "This session has ended. Please start again.", reload: "Your session needs a refresh. Reload the page (Ctrl+F5) and start again. Nothing you entered was saved.", cookies: "Your browser isn't keeping cookies for this site, which we need to keep your session. Allow cookies for this site, then reload the page." },
   restart: "Start again",
 };
 
@@ -99,7 +100,7 @@ const hi: typeof en = {
   start: {
     title: "कुछ सवालों में अपने बिज़नेस के लिए सही बंडल पाएँ",
     p1: "बंडल सुझाने के लिए हम आपके बिज़नेस का प्रकार, शहर, आकार और ज़रूरतें पूछेंगे। नाम, फ़ोन नंबर या ID नंबर नहीं। आपके आखिरी संदेश के 24 घंटे बाद, या 'खत्म करें और मिटाएँ' दबाने पर, यह चैट मिट जाती है।",
-    cta: "शुरू करें", lang: "भाषा",
+    cta: "शुरू करें", lang: "भाषा", staff: "मैं Accel में काम करता/करती हूँ (बैक ऑफिस)",
   },
   chat: { placeholder: "अपना जवाब लिखें…", send: "भेजें", typing: "…", buttonsOnly: "या कोई विकल्प चुनें" },
   gstin: {
@@ -128,6 +129,7 @@ const hi: typeof en = {
     p3: "मेरे दस्तावेज़ जाँचें (KYC)", p3d: "हम आपके 4 दस्तावेज़ अपने सर्वर पर पढ़ते हैं, निकाली गई जानकारी (एन्क्रिप्टेड) इस आवेदन के लिए रखते हैं, और फ़ोटो कभी नहीं रखते।",
     p5: "मेरा आवेदन Accel Business सेल्स से साझा करें", p5d: "वैकल्पिक। अटकने पर कोई आपको कॉल कर सके।",
     continue: "आगे बढ़ें", required: "ऑनलाइन KYC के लिए ज़रूरी",
+    p5partner: "मेरा आवेदन {{name}} से साझा करें, जिन्होंने आपको भेजा", p5partnerd: "वैकल्पिक, ऊपर वाले विकल्प से अलग। भेजने पर उन्हें सिर्फ श्रेय मिलता है; आप यह टिक न करें तो उन्हें कुछ नहीं दिखता।",
     declined: "दस्तावेज़ जाँच के बिना हम इस सेशन के लिए आपका कोटेशन रख सकते हैं, पर ऑनलाइन ऑर्डर नहीं ले सकते। मदद चाहिए तो दूसरा विकल्प चुनें।",
   },
   kyc: {
@@ -164,7 +166,7 @@ const hi: typeof en = {
     openOrder: "आपका एक खुला ऑर्डर है। पहले उसे रद्द करें, फिर मिटाएँ।",
   },
   mydata: { title: "मेरा डेटा", end: "खत्म करें और मिटाएँ", endd: "यह चैट, आपके जवाब, कोटेशन और दस्तावेज़ अभी मिटा देता है।", done: "मिटा दिया। आप कभी भी फिर शुरू कर सकते हैं।", withdrawP3: "दस्तावेज़ जाँच वापस लें" },
-  errors: { generic: "कुछ गड़बड़ हुई: {{msg}}", expired: "यह सेशन खत्म हो गया। फिर से शुरू करें।", reload: "आपके सेशन को रीफ़्रेश करना होगा। पेज रीलोड करें (Ctrl+F5) और फिर शुरू करें। आपका दिया कुछ भी सेव नहीं हुआ।" },
+  errors: { generic: "कुछ गड़बड़ हुई: {{msg}}", expired: "यह सेशन खत्म हो गया। फिर से शुरू करें।", reload: "आपके सेशन को रीफ़्रेश करना होगा। पेज रीलोड करें (Ctrl+F5) और फिर शुरू करें। आपका दिया कुछ भी सेव नहीं हुआ।", cookies: "आपका ब्राउज़र इस साइट के लिए कुकीज़ नहीं रख रहा, जो सेशन के लिए ज़रूरी हैं। इस साइट के लिए कुकीज़ की अनुमति दें और पेज रीलोड करें।" },
   restart: "फिर से शुरू करें",
 };
 

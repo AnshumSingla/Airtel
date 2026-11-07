@@ -127,3 +127,42 @@ def test_log_redaction():
     assert "mjksY5Tw" not in redact(line) and "/api/advisor/sessions/[id]/messages" in redact(line)
     assert "session_id=[redacted]" in redact("GET /api/orders/abc?session_id=secret-token-value HTTP/1.1")
     assert "37IHKXV5167L1ZS" not in redact("gst 37IHKXV5167L1ZS")
+
+
+# ---- CSRF tokens are computed from the session cookie, not matched against a second cookie
+
+def test_start_response_carries_the_token_and_it_works_without_the_readable_cookie(app):
+    with make_client(app) as c:
+        start = c.post("/api/advisor/sessions", json={"language": "en"}).json()
+        sid, token = start["session_id"], start["csrf_token"]
+        c.event_hooks["request"].clear()
+        c.cookies.delete("udyam_csrf")                    # the JS-visible cookie is gone: irrelevant
+        ok = c.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"}, headers={"X-CSRF-Token": token})
+        assert ok.status_code == 200
+
+
+def test_stale_or_foreign_cookie_value_does_not_matter_but_the_wrong_token_does(app):
+    with make_client(app) as a, make_client(app) as b:
+        a_start = a.post("/api/advisor/sessions", json={"language": "en"}).json()
+        b_start = b.post("/api/advisor/sessions", json={"language": "en"}).json()
+        a.event_hooks["request"].clear()
+        a.cookies.set("udyam_csrf", "some-stale-value-from-another-server")
+        sid = a_start["session_id"]
+        assert a.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"},
+                      headers={"X-CSRF-Token": "some-stale-value-from-another-server"}).status_code == 403
+        # B's valid token is not valid for A's session cookie.
+        assert a.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"},
+                      headers={"X-CSRF-Token": b_start["csrf_token"]}).status_code == 403
+        # The app recovers by asking the server: GET /api/advisor/csrf returns the right token.
+        fresh = a.get("/api/advisor/csrf").json()["csrf_token"]
+        assert fresh == a_start["csrf_token"]
+        assert a.post(f"/api/advisor/sessions/{sid}/messages", json={"text": "hi"},
+                      headers={"X-CSRF-Token": fresh}).status_code == 200
+
+
+def test_missing_session_cookie_gives_a_clear_message(app):
+    with make_client(app) as c:
+        c.event_hooks["request"].clear()
+        r = c.post("/api/advisor/sessions/whatever/messages", json={"text": "hi"}, headers={"X-CSRF-Token": "x"})
+        assert r.status_code == 403 and r.json()["code"] == "no_session_cookie"
+        assert c.get("/api/advisor/csrf").status_code == 404

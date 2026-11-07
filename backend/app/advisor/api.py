@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.advisor.service import AdvisorService, SessionNotFound
-from app.security.web import clear_session_cookies, require_owner, set_session_cookies
+from app.security.web import clear_session_cookies, cookie_sid, csrf_for, require_owner, set_session_cookies
 
 router = APIRouter(prefix="/api/advisor", tags=["advisor"])
 
@@ -43,7 +43,14 @@ def start(body: StartIn, request: Request, response: Response) -> dict:
 
     if body.ref and body.ref.lower() in REFERRAL_CODES and hasattr(request.app.state, "referrals"):
         request.app.state.referrals.attribute(sid, REFERRAL_CODES[body.ref.lower()])
-    return {"session_id": sid, "p1_notice_version": "p1-2026-11-05", **asdict(turn)}
+    partner = None
+    from app.backoffice.accounts import PARTNERS, REFERRAL_CODES
+
+    if body.ref and body.ref.lower() in REFERRAL_CODES:
+        pid = REFERRAL_CODES[body.ref.lower()]
+        partner = {"id": pid, "name": PARTNERS[pid]}
+    return {"session_id": sid, "p1_notice_version": "p1-2026-11-05", "csrf_token": csrf_for(sid),
+            "partner": partner, **asdict(turn)}
 
 
 @router.post("/sessions/{sid}/messages")
@@ -87,6 +94,15 @@ def end(sid: str, request: Request, response: Response) -> dict:
 
 class ItemsIn(BaseModel):
     items: list[dict] = Field(..., max_length=40)
+
+
+@router.get("/csrf")
+def csrf(request: Request) -> dict:
+    """The CSRF token for this browser's session cookie. Not readable cross-site (no CORS)."""
+    sid = cookie_sid(request)
+    if not sid:
+        raise HTTPException(404, "no session cookie")
+    return {"csrf_token": csrf_for(sid)}
 
 
 @router.get("/options")

@@ -17,10 +17,11 @@ function ChoiceRow({ on, set, title, desc, badge }: { on: boolean; set: (v: bool
   );
 }
 
-export function Choices({ sid, onDone }: { sid: string; onDone: (p3: boolean) => void }) {
+export function Choices({ sid, partner, onDone }: { sid: string; partner: { id: string; name: string } | null; onDone: (p3: boolean) => void }) {
   const { t, i18n } = useTranslation();
   const [p3, setP3] = useState(false);   // unticked by default (POLICIES.md §2)
   const [p5, setP5] = useState(false);
+  const [p5Partner, setP5Partner] = useState(false);   // only offered when a referral link named a partner
   const [declined, setDeclined] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lang = i18n.language === "hi" ? "hi" : "en";
@@ -30,6 +31,7 @@ export function Choices({ sid, onDone }: { sid: string; onDone: (p3: boolean) =>
     try {
       await api.consent(sid, "P3", p3 ? "given" : "declined", lang);
       await api.consent(sid, "P5", p5 ? "given" : "declined", lang, "accel_sales");
+      if (partner) await api.consent(sid, "P5", p5Partner ? "given" : "declined", lang, partner.id);
       setDeclined(!p3);
       onDone(p3);
     } catch (e) { setError((e as Error).message); }
@@ -42,6 +44,7 @@ export function Choices({ sid, onDone }: { sid: string; onDone: (p3: boolean) =>
       <div className="mt-4 flex flex-col gap-3">
         <ChoiceRow on={p3} set={setP3} title={t("choices.p3")} desc={t("choices.p3d")} badge={t("choices.required")} />
         <ChoiceRow on={p5} set={setP5} title={t("choices.p5")} desc={t("choices.p5d")} />
+        {partner && <ChoiceRow on={p5Partner} set={setP5Partner} title={t("choices.p5partner", { name: partner.name })} desc={t("choices.p5partnerd")} />}
       </div>
       {declined && <p className="mt-3 rounded-lg bg-warn-50 px-3 py-2 text-sm text-warn-600">{t("choices.declined")}</p>}
       <Btn className="mt-5 w-full" onClick={save}>{t("choices.continue")}</Btn>

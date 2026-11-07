@@ -35,7 +35,8 @@ Planned stack: FastAPI (Python 3.11) single-instance modular monolith · React +
 | Orders and tracker: order and line state machines, KYC-driven holds, continue without excluded items, simulated feasibility and installs, substitute offer, reschedule, cancel, idempotent commands, simulated message inbox, demo clock | Built, tested; walked through in a browser | `app/orders/`, `frontend/src/screens/Tracker.tsx` | `tests/test_orders.py` |
 | Owner-side web security: cookie-bound sessions, CSRF + Origin checks, per-IP rate limits, CSP and security headers, log redaction | Built, tested | `app/security/` | `tests/test_security.py` (11 cross-session attack calls, all 404) |
 | CI (GitHub Actions): tests, privacy-gate report, 47-image KYC check (both fail the build on a leak or mismatch), frontend type-check and build; evidence uploaded per commit | Written; the backend job reproduced in a Linux container (all stages pass); **not yet run on GitHub** (no remote) | `.github/workflows/ci.yml` | |
-| Back office (staff login, reviewer approvals, partner and sales queues), P4/P5, scheduled retention job, UI tests | **Not built yet** | | |
+| Back office at `/#/staff`: staff login (Argon2id, lockout, 30 min idle / 8 h sessions), P5-scoped sales and partner queues (claim, notes), referral counts, call-back list, KYC reviewer approve/reject that moves the order on, audit log, retention button | Built; every role walked through in a browser; scope tested with direct API calls | `app/backoffice/`, `frontend/src/staff/` | `tests/test_backoffice.py` |
+| P4 (save and resume), scheduled retention job, UI tests | **Not built yet** | | |
 
 Run it (Windows, Python 3.11):
 
