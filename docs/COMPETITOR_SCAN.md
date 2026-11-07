@@ -21,9 +21,10 @@ GitHub search on 05 Nov 2026 found about 20 public repos for this exact case (se
 2. **Gemini free tier is the common LLM choice**, and at least one team documents its 5 requests/minute limit as a demo risk. A reliable provider plus a scripted fallback matters.
 3. **Where we can differentiate:**
    - **Business judgement in the product**, not only in the deck: the data signals (GSTIN-first prefill, the 56 rule-breaking bundles, follow-up calls ↔ churn, regional-language conversion gap, ₹20k micro CAC) each map to a visible feature.
-   - **KYC images never leave our server** (local OCR), stated as a DPDP choice. Some teams send documents to a cloud vision model.
+   - **Documents are not sent to a third-party OCR or AI vendor** (local OCR, images not stored). Some teams send documents to a cloud vision model. This reduces onward transfer; it is one privacy choice among several, not a privacy guarantee.
+   - **Honest labelling** (simulated vs real, automated checks vs verified identity, observation vs hypothesis): most READMEs use "verified" and "compliant" freely, which is easy for a judge to puncture.
    - **Partner-friendly design** (key question 4) is thin in most READMEs: attribution codes, assisted KYC by partners, field-sales handoff with context.
-   - **Voice in regional languages** via the browser, cheap to build and rare in the scan.
-   - **Expected-value call list** (`p × value`), not just a probability.
-   - Tight, honest metrics and targets tied to the baseline we computed.
+   - **A privacy gate in front of the LLM** (specified so that raw text never leaves the server; to be proven by a red-team report), where other teams rely on redaction or send text as-is. Voice and regional-language conversation become roadmap items as a result, which we state openly.
+   - **A call list that has to beat a baseline** (ranked by expected revenue), not just a probability score.
+   - Metrics framed as a randomised pilot with leading and outcome measures, tied to the baseline we computed.
 4. **Scope warning:** the microservice and Kafka builds are impressive but leave less time for the parts judges test live.
