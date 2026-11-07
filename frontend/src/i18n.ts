@@ -87,7 +87,7 @@ const en = {
     openOrder: "You have an open order. Cancel it first, then End and delete.",
   },
   mydata: { title: "My data", end: "End and delete", endd: "Deletes this chat, your answers, quotes and documents now.", done: "Deleted. You can start again any time.", withdrawP3: "Withdraw document checks" },
-  errors: { generic: "Something went wrong: {{msg}}", expired: "This session has ended. Please start again." },
+  errors: { generic: "Something went wrong: {{msg}}", expired: "This session has ended. Please start again.", reload: "Your session needs a refresh. Reload the page (Ctrl+F5) and start again. Nothing you entered was saved." },
   restart: "Start again",
 };
 
@@ -164,7 +164,7 @@ const hi: typeof en = {
     openOrder: "आपका एक खुला ऑर्डर है। पहले उसे रद्द करें, फिर मिटाएँ।",
   },
   mydata: { title: "मेरा डेटा", end: "खत्म करें और मिटाएँ", endd: "यह चैट, आपके जवाब, कोटेशन और दस्तावेज़ अभी मिटा देता है।", done: "मिटा दिया। आप कभी भी फिर शुरू कर सकते हैं।", withdrawP3: "दस्तावेज़ जाँच वापस लें" },
-  errors: { generic: "कुछ गड़बड़ हुई: {{msg}}", expired: "यह सेशन खत्म हो गया। फिर से शुरू करें।" },
+  errors: { generic: "कुछ गड़बड़ हुई: {{msg}}", expired: "यह सेशन खत्म हो गया। फिर से शुरू करें।", reload: "आपके सेशन को रीफ़्रेश करना होगा। पेज रीलोड करें (Ctrl+F5) और फिर शुरू करें। आपका दिया कुछ भी सेव नहीं हुआ।" },
   restart: "फिर से शुरू करें",
 };
 

@@ -29,7 +29,7 @@ export function Choices({ sid, onDone }: { sid: string; onDone: (p3: boolean) =>
     setError(null);
     try {
       await api.consent(sid, "P3", p3 ? "given" : "declined", lang);
-      await api.consent(sid, "P5", p5 ? "given" : "declined", lang);
+      await api.consent(sid, "P5", p5 ? "given" : "declined", lang, "accel_sales");
       setDeclined(!p3);
       onDone(p3);
     } catch (e) { setError((e as Error).message); }

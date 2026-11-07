@@ -1,4 +1,5 @@
 // Typed client for the FastAPI backend. Same origin: the PWA is served by the API.
+import i18n from "./i18n";
 
 export type Button = { label: string; value: string };
 export type Summary = {
@@ -60,7 +61,7 @@ const postIdem = <T,>(path: string, body: unknown, idemKey: string = key()) =>
   call<T>(path, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idemKey }, body: JSON.stringify(body) });
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public needsReload = false) { super(message); }
 }
 
 // CSRF (POLICIES.md §13): the server sets a readable udyam_csrf cookie with the session; every
@@ -78,7 +79,11 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail ?? detail; } catch { /* not JSON */ }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+    const text = typeof detail === "string" ? detail : JSON.stringify(detail);
+    // 403 + this detail means the app has no valid CSRF token: an old cached copy of the app, or cleared
+    // cookies. Starting again fixes it, so say that instead of showing the raw message.
+    if (res.status === 403 && /CSRF/i.test(text)) throw new ApiError(403, i18n.t("errors.reload"), true);
+    throw new ApiError(res.status, text);
   }
   return res.json() as Promise<T>;
 }
@@ -96,8 +101,8 @@ export const api = {
   accept: (sid: string, items: { product_id: string; quantity: number }[]) =>
     post<{ version: number; quote: Quote; lines: Line[] }>(`/api/advisor/sessions/${sid}/accept`, { items }),
   end: (sid: string) => post<{ deleted: boolean }>(`/api/advisor/sessions/${sid}/end`, {}),
-  consent: (sid: string, purpose: string, decision: "given" | "declined", language: string) =>
-    post<{ event_id: string }>("/api/consents", { session_id: sid, purpose, decision, language }),
+  consent: (sid: string, purpose: string, decision: "given" | "declined", language: string, team?: string) =>
+    post<{ event_id: string }>("/api/consents", { session_id: sid, purpose, decision, language, ...(team ? { team } : {}) }),
   withdraw: (sid: string, purpose: string) => post<{ effects: string[] }>("/api/consents/withdraw", { session_id: sid, purpose }),
   gstinCheck: (sid: string, gstin: string) =>
     post<{ status: string; gstin?: string; registry: string; prefill?: Record<string, string> }>("/api/registry/gstin-check", { session_id: sid, gstin }),
