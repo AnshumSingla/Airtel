@@ -13,13 +13,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.backoffice.accounts import AccountLocked, LoginFailed, Staff
-from app.backoffice.service import NotInScope, WrongRole, new_csrf
+from app.backoffice.service import NotInScope, WrongRole
 from app.orders.states import IllegalTransition
-from app.security.web import _is_https
+from app.security.web import STAFF_COOKIE, _is_https, csrf_for
 
 router = APIRouter(prefix="/api/bo", tags=["back office"])
 
-STAFF_COOKIE = "udyam_staff"
 STAFF_CSRF_COOKIE = "udyam_staff_csrf"
 
 
@@ -70,10 +69,12 @@ def login(body: LoginIn, request: Request, response: Response) -> dict:
         raise HTTPException(401, "wrong username or password")
     secure = _is_https(request)
     response.set_cookie(STAFF_COOKIE, token, httponly=True, samesite="strict", secure=secure, path="/api/bo")
-    response.set_cookie(STAFF_CSRF_COOKIE, new_csrf(), httponly=False, samesite="strict", secure=secure, path="/")
+    csrf = csrf_for("staff:" + token)
+    response.set_cookie(STAFF_CSRF_COOKIE, csrf, httponly=False, samesite="strict", secure=secure, path="/")
     staff = st.staff.accounts[body.username]
     st.audit.record(staff.username, staff.role, "login", "staff")
-    return {"username": staff.username, "role": staff.role, "display": staff.display, "partner_id": staff.partner_id}
+    return {"username": staff.username, "role": staff.role, "display": staff.display, "partner_id": staff.partner_id,
+            "csrf_token": csrf}
 
 
 @router.post("/logout")
@@ -92,7 +93,8 @@ def logout(request: Request, response: Response) -> dict:
 @router.get("/me")
 def me(request: Request) -> dict:
     s = _staff(request)
-    return {"username": s.username, "role": s.role, "display": s.display, "partner_id": s.partner_id}
+    return {"username": s.username, "role": s.role, "display": s.display, "partner_id": s.partner_id,
+            "csrf_token": csrf_for("staff:" + request.cookies.get(STAFF_COOKIE, ""))}
 
 
 @router.get("/queue")

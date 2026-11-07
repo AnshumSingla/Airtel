@@ -161,10 +161,10 @@ class AdvisorService:
                 value = int(raw)
             self._set_slot(state, key, value)
         elif action.startswith("__need:"):
-            pid = action[7:]
+            # One tap or several at once ("__need:P19,P23"); only catalogue products are accepted.
+            picked = {p for p in action[7:].split(",") if p in self.cat and p in prompts.NEED_CODES.values()}
             state["needs_asked"] = True
-            if pid != "none" and pid in self.cat:
-                state["needs"] = sorted(set(state["needs"]) | {pid})
+            state["needs"] = sorted(set(state["needs"]) | picked)
         elif action == "__handoff":
             return Turn(prompts.question("too_many_turns", lang), lang, "handoff_requested")
         elif action == "__partial":

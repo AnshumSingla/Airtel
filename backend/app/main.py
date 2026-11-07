@@ -150,6 +150,6 @@ def catalogue() -> list[dict]:
 # Serve the built PWA (frontend/dist) from the same origin as the API, if it has been built.
 _DIST = load_settings().data_dir.parents[1] / "frontend" / "dist"
 if _DIST.is_dir():
-    from fastapi.staticfiles import StaticFiles
+    from app.security.static import PwaStaticFiles
 
-    app.mount("/", StaticFiles(directory=_DIST, html=True), name="pwa")
+    app.mount("/", PwaStaticFiles(directory=_DIST, html=True), name="pwa")

@@ -55,6 +55,19 @@ def test_hinglish_conversation_to_quote_a(svc):
     assert p02["reasons"][0]["text"].startswith("Professional offices sabse zyada")
 
 
+def test_several_needs_in_one_tap_and_junk_ids_are_ignored(svc):
+    sid, _ = svc.start("en")
+    for action in ["__set:segment=micro", "__set:city_tier=2", "__set:employees=3", "__set:sites=1",
+                   "__set:has_gstin=true"]:
+        t = svc.message(sid, action)
+    assert t.expecting == "needs"
+    t = svc.message(sid, "__need:P19,P23,P16,NOT_A_PRODUCT,")
+    assert t.status == "confirm"
+    rec = svc.confirm(sid, {})
+    assert {"P19", "P23", "P16"} <= {ln["product_id"] for ln in rec["lines"]}
+    assert "NOT_A_PRODUCT" not in {ln["product_id"] for ln in rec["lines"]}
+
+
 def test_buttons_only_path_works_without_any_text(svc):
     sid, _ = svc.start("en")
     for action in ["__set:segment=micro", "__set:city_tier=2", "__set:employees=3", "__set:sites=1",

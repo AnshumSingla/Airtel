@@ -4,8 +4,11 @@
   SameSite=Lax, Secure over HTTPS, 24 h). Every owner route checks that the
   session, KYC case or order it touches belongs to that cookie; knowing an id
   is not enough.
-- CSRF: every state-changing /api request needs an ``X-CSRF-Token`` header
-  equal to the ``udyam_csrf`` cookie (double submit), and an ``Origin``
+- CSRF: every state-changing /api request needs an ``X-CSRF-Token`` header that
+  equals HMAC(server secret, session cookie). The expected value is computed from
+  the HttpOnly session cookie, so it can't be undermined by stale, duplicated or
+  unreadable JS-visible cookies. The app gets its token from the start-session
+  response, the readable ``udyam_csrf`` cookie, or ``GET /api/csrf``. An ``Origin``
   header, when present, must be this app's origin or an allowed dev origin.
   Starting a session is exempt (there is no session yet to protect).
 - Per-IP rate limits, and security headers on every response.
@@ -14,7 +17,10 @@ CORS stays off: the PWA is served from the same origin.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
+import logging
 import os
 import secrets
 import threading
@@ -25,7 +31,14 @@ from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+log = logging.getLogger("udyam")
+
+# Signs CSRF tokens. Random per process unless UDYAM_CSRF_SECRET is set (sessions don't outlive a
+# restart of the demo anyway; set it to keep tokens valid across restarts).
+_SECRET = (os.environ.get("UDYAM_CSRF_SECRET") or secrets.token_hex(32)).encode()
+
 SID_COOKIE = "udyam_sid"
+STAFF_COOKIE = "udyam_staff"
 CSRF_COOKIE = "udyam_csrf"
 CSRF_HEADER = "x-csrf-token"
 SESSION_MAX_AGE = 24 * 3600
@@ -40,6 +53,12 @@ CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe
        "form-action 'self'")
 
 
+def csrf_for(session_token: str) -> str:
+    """The CSRF token for a session (or "staff:"-prefixed staff session) cookie value."""
+    mac = hmac.new(_SECRET, session_token.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(mac).decode().rstrip("=")[:32]
+
+
 def _is_https(request: Request) -> bool:
     return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
 
@@ -48,8 +67,9 @@ def set_session_cookies(request: Request, response: Response, sid: str) -> None:
     secure = _is_https(request)
     response.set_cookie(SID_COOKIE, sid, max_age=SESSION_MAX_AGE, httponly=True, samesite="lax",
                         secure=secure, path="/")
-    # Readable by the page's script on purpose: it echoes it in the X-CSRF-Token header.
-    response.set_cookie(CSRF_COOKIE, secrets.token_urlsafe(24), max_age=SESSION_MAX_AGE, httponly=False,
+    # A convenience copy for the page's script. The server doesn't trust it: it recomputes the token
+    # from the HttpOnly session cookie and compares that with the header.
+    response.set_cookie(CSRF_COOKIE, csrf_for(sid), max_age=SESSION_MAX_AGE, httponly=False,
                         samesite="lax", secure=secure, path="/")
 
 
@@ -128,11 +148,19 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 if origin and origin != own and origin not in allowed_origins():
                     return self._headers(JSONResponse({"detail": "cross-site request refused"}, status_code=403))
                 if (method, path) not in CSRF_EXEMPT:
-                    # Staff routes use the staff token; owner routes use the owner token.
-                    cookie_name = STAFF_CSRF_COOKIE if path.startswith("/api/bo/") else CSRF_COOKIE
-                    token, cookie = request.headers.get(CSRF_HEADER, ""), request.cookies.get(cookie_name, "")
-                    if not token or not cookie or not hmac.compare_digest(token, cookie):
-                        return self._headers(JSONResponse({"detail": "missing or invalid CSRF token"}, status_code=403))
+                    staff = path.startswith("/api/bo/")
+                    session = request.cookies.get(STAFF_COOKIE if staff else SID_COOKIE, "")
+                    token = request.headers.get(CSRF_HEADER, "")
+                    if not session:
+                        log.warning("csrf refused: %s has no session cookie (cookies blocked or expired?)", path)
+                        return self._headers(JSONResponse(
+                            {"detail": "no session cookie: your browser must allow cookies for this site",
+                             "code": "no_session_cookie"}, status_code=403))
+                    expected = csrf_for(("staff:" if staff else "") + session)
+                    if not token or not hmac.compare_digest(token, expected):
+                        log.warning("csrf refused: %s header_present=%s", path, bool(token))
+                        return self._headers(JSONResponse({"detail": "missing or invalid CSRF token",
+                                                           "code": "bad_csrf"}, status_code=403))
         return self._headers(await call_next(request))
 
     @staticmethod

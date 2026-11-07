@@ -1,4 +1,5 @@
 // Typed client for the FastAPI backend. Same origin: the PWA is served by the API.
+import i18n from "./i18n";
 
 export type Button = { label: string; value: string };
 export type Summary = {
@@ -60,27 +61,60 @@ const postIdem = <T,>(path: string, body: unknown, idemKey: string = key()) =>
   call<T>(path, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idemKey }, body: JSON.stringify(body) });
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public needsReload = false) { super(message); }
 }
 
-// CSRF (POLICIES.md §13): the server sets a readable udyam_csrf cookie with the session; every
-// state-changing request echoes it in X-CSRF-Token. The session cookie itself is HttpOnly.
-function csrfToken(): string {
-  const m = document.cookie.match(/(?:^|;s*)udyam_csrf=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : "";
+// CSRF (POLICIES.md §13). The server computes the expected token from the HttpOnly session cookie, so
+// this client only has to present the right one. Sources, in order: the token held in memory (from the
+// start-session response), the readable udyam_csrf cookie, then GET /api/advisor/csrf. If a request is
+// refused for its token, we fetch a fresh one and retry once.
+// The cookie is read by splitting document.cookie. An earlier version used a regex that only matched
+// when udyam_csrf was the first cookie, which broke the app whenever another localhost cookie came first.
+let memoryToken: string | null = null;
+export const setCsrfToken = (t: string | null) => { memoryToken = t; };
+
+function cookieValue(name: string): string {
+  for (const part of document.cookie.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return "";
+}
+
+async function refreshToken(): Promise<string> {
+  const res = await fetch("/api/advisor/csrf", { credentials: "same-origin" });
+  if (!res.ok) return "";
+  memoryToken = (await res.json()).csrf_token ?? "";
+  return memoryToken ?? "";
+}
+
+async function errorFor(res: Response): Promise<ApiError> {
+  let detail: unknown = res.statusText;
+  let code = "";
+  try { const j = await res.json(); detail = j.detail ?? detail; code = j.code ?? ""; } catch { /* not JSON */ }
+  const text = typeof detail === "string" ? detail : JSON.stringify(detail);
+  if (res.status === 403 && code === "no_session_cookie") return new ApiError(403, i18n.t("errors.cookies"), true);
+  if (res.status === 403 && (code === "bad_csrf" || /CSRF/i.test(text))) return new ApiError(403, i18n.t("errors.reload"), true);
+  return new ApiError(res.status, text);
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
-  const headers = new Headers(init?.headers);
-  if (method !== "GET" && csrfToken()) headers.set("X-CSRF-Token", csrfToken());
-  const res = await fetch(path, { ...init, headers, credentials: "same-origin" });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try { detail = (await res.json()).detail ?? detail; } catch { /* not JSON */ }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+  const mutating = method !== "GET";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const headers = new Headers(init?.headers);
+    if (mutating) {
+      const token = (attempt === 0 ? memoryToken || cookieValue("udyam_csrf") : await refreshToken()) || "";
+      if (token) headers.set("X-CSRF-Token", token);
+    }
+    const res = await fetch(path, { ...init, headers, credentials: "same-origin" });
+    if (res.ok) return res.json() as Promise<T>;
+    const err = await errorFor(res);
+    // A refused token on the first try: get a fresh one from the server and try once more.
+    if (mutating && attempt === 0 && err.status === 403 && err.needsReload && !path.startsWith("/api/bo/")) continue;
+    throw err;
   }
-  return res.json() as Promise<T>;
+  throw new ApiError(500, "unreachable");
 }
 
 const post = <T,>(path: string, body: unknown) =>
@@ -89,15 +123,20 @@ const post = <T,>(path: string, body: unknown) =>
 export const api = {
   health: () => call<{ business_as_of: string; demo_clock: boolean; advisor: { llm: string } }>("/api/health"),
   options: () => call<Options>("/api/advisor/options"),
-  start: (language: string) => post<Turn & { session_id: string }>("/api/advisor/sessions", { language }),
+  start: async (language: string, ref?: string | null) => {
+    const r = await post<Turn & { session_id: string; csrf_token: string; partner: { id: string; name: string } | null }>(
+      "/api/advisor/sessions", { language, ...(ref ? { ref } : {}) });
+    setCsrfToken(r.csrf_token);
+    return r;
+  },
   send: (sid: string, text: string) => post<Turn>(`/api/advisor/sessions/${sid}/messages`, { text }),
   confirm: (sid: string, edits: Record<string, unknown>) => post<Recommendation>(`/api/advisor/sessions/${sid}/confirm`, { edits }),
   preview: (sid: string, items: { product_id: string; quantity: number }[]) => post<Preview>(`/api/advisor/sessions/${sid}/quote`, { items }),
   accept: (sid: string, items: { product_id: string; quantity: number }[]) =>
     post<{ version: number; quote: Quote; lines: Line[] }>(`/api/advisor/sessions/${sid}/accept`, { items }),
   end: (sid: string) => post<{ deleted: boolean }>(`/api/advisor/sessions/${sid}/end`, {}),
-  consent: (sid: string, purpose: string, decision: "given" | "declined", language: string) =>
-    post<{ event_id: string }>("/api/consents", { session_id: sid, purpose, decision, language }),
+  consent: (sid: string, purpose: string, decision: "given" | "declined", language: string, team?: string) =>
+    post<{ event_id: string }>("/api/consents", { session_id: sid, purpose, decision, language, ...(team ? { team } : {}) }),
   withdraw: (sid: string, purpose: string) => post<{ effects: string[] }>("/api/consents/withdraw", { session_id: sid, purpose }),
   gstinCheck: (sid: string, gstin: string) =>
     post<{ status: string; gstin?: string; registry: string; prefill?: Record<string, string> }>("/api/registry/gstin-check", { session_id: sid, gstin }),

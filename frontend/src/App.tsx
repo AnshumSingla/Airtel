@@ -20,6 +20,7 @@ export default function App() {
   const [rec, setRec] = useState<Recommendation | null>(null);
   const [accepted, setAccepted] = useState<{ version: number; ids: string[] } | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
+  const [partner, setPartner] = useState<{ id: string; name: string } | null>(null);
   const [caseId, setCaseId] = useState<string | null>(null);
   const rememberCase = useCallback((id: string) => setCaseId(id), []);
   const [options, setOptions] = useState<Options | null>(null);
@@ -42,7 +43,9 @@ export default function App() {
   async function start() {
     setBusy(true); setError(null);
     try {
-      const s = await api.start(i18n.language === "hi" ? "hi" : "en");
+      const ref = new URLSearchParams(window.location.search).get("ref");
+      const s = await api.start(i18n.language === "hi" ? "hi" : "en", ref);
+      setPartner(s.partner);
       setSid(s.session_id); setFirst(s); setStep("chat");
     } catch (e) { setError(t("errors.generic", { msg: (e as Error).message })); }
     finally { setBusy(false); }
@@ -118,6 +121,7 @@ export default function App() {
             <h1 className="text-xl font-bold leading-snug">{t("start.title")}</h1>
             <p className="mt-3 text-sm text-ink-600">{t("start.p1")}</p>
             <Btn className="mt-5 w-full" onClick={start} disabled={busy}>{t("start.cta")}</Btn>
+            <p className="mt-4 text-center text-xs text-ink-400"><a className="underline" href="/#/staff">{t("start.staff")}</a></p>
           </Card>
         )}
         {step === "ended" && (
@@ -136,7 +140,7 @@ export default function App() {
         {step === "choices" && sid && (
           <>
             {accepted && <p className="mb-3 text-sm text-brand-700">{t("quote.accepted", { v: accepted.version })}</p>}
-            <Choices sid={sid} onDone={(p3) => (p3 ? setStep("kyc") : setStep("choices"))} />
+            <Choices sid={sid} partner={partner} onDone={(p3) => (p3 ? setStep("kyc") : setStep("choices"))} />
           </>
         )}
         {step === "kyc" && sid && <Kyc sid={sid} productIds={accepted?.ids ?? []} names={names} existingCase={caseId} onCase={rememberCase} onSendToOrder={sendToOrder} />}
