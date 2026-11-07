@@ -4,6 +4,7 @@ import { api, ApiError, type Turn } from "../api";
 import { Btn, Card, ErrorNote } from "../ui";
 
 type Msg = { from: "bot" | "me"; text: string };
+const NONE = "__need:none";
 
 export function Chat({ sid, first, onConfirm, onExpired }: { sid: string; first: Turn; onConfirm: (t: Turn) => void; onExpired: () => void }) {
   const { t } = useTranslation();
@@ -12,6 +13,7 @@ export function Chat({ sid, first, onConfirm, onExpired }: { sid: string; first:
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);   // multi-select on the "needs" question
   const [gstin, setGstin] = useState("");
   const [gstinResult, setGstinResult] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -32,6 +34,14 @@ export function Chat({ sid, first, onConfirm, onExpired }: { sid: string; first:
       if (e instanceof ApiError && e.status === 404) onExpired();
       else setError(t("errors.generic", { msg: (e as Error).message }));
     } finally { setBusy(false); }
+  }
+
+  async function sendPicked() {
+    const chosen = turn.buttons.filter((b) => picked.includes(b.value));
+    if (!chosen.length) return;
+    const ids = chosen.map((b) => b.value.replace("__need:", "")).join(",");
+    setPicked([]);
+    await send(`__need:${ids}`, chosen.map((b) => b.label).join(", "));
   }
 
   async function checkGstin() {
@@ -69,7 +79,33 @@ export function Chat({ sid, first, onConfirm, onExpired }: { sid: string; first:
       )}
       {gstinResult && <p className="text-sm text-ink-600">GSTIN: {gstinResult}</p>}
 
-      {turn.buttons.length > 0 && (
+      {turn.buttons.length > 0 && turn.expecting === "needs" && (
+        <div>
+          <p className="mb-1.5 text-xs text-ink-400">{t("chat.multiHint")}</p>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("chat.multiHint")}>
+            {turn.buttons.filter((b) => b.value !== NONE).map((b) => {
+              const on = picked.includes(b.value);
+              return (
+                <button key={b.value} type="button" aria-pressed={on} disabled={busy}
+                  onClick={() => setPicked((p) => (on ? p.filter((v) => v !== b.value) : [...p, b.value]))}
+                  className={`min-h-11 rounded-xl border px-4 py-2 text-[15px] font-semibold transition ${on ? "border-brand-500 bg-brand-500 text-white" : "border-brand-500 bg-white text-brand-600"}`}>
+                  {on ? "✓ " : ""}{b.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Btn disabled={busy || picked.length === 0} onClick={sendPicked}>
+              {picked.length ? t("chat.continueN", { count: picked.length }) : t("chat.continue")}
+            </Btn>
+            {turn.buttons.filter((b) => b.value === NONE).map((b) => (
+              <Btn key={b.value} variant="outline" disabled={busy} onClick={() => send(b.value, b.label)}>{b.label}</Btn>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {turn.buttons.length > 0 && turn.expecting !== "needs" && (
         <div>
           <p className="mb-1.5 text-xs text-ink-400">{t("chat.buttonsOnly")}</p>
           <div className="flex flex-wrap gap-2">

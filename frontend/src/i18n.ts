@@ -13,7 +13,7 @@ const en = {
     p1: "To suggest a bundle we'll ask about your business type, city, size and needs. No names, phone numbers or ID numbers. This chat is deleted 24 hours after your last message, or when you tap End and delete.",
     cta: "Start", lang: "Language", staff: "I work at Accel (back office)",
   },
-  chat: { placeholder: "Type your answer…", send: "Send", typing: "…", buttonsOnly: "Or tap an option" },
+  chat: { placeholder: "Type your answer…", send: "Send", typing: "…", buttonsOnly: "Or tap an option", multiHint: "Tap all that apply, then Continue", continue: "Continue", continueN: "Continue ({{count}} selected)" },
   gstin: {
     title: "Check your GSTIN (optional)",
     notice: "With your permission we'll look up this GSTIN once in the (mock) GST registry to unlock products that need an active GSTIN. We don't keep the number.",
@@ -102,7 +102,7 @@ const hi: typeof en = {
     p1: "बंडल सुझाने के लिए हम आपके बिज़नेस का प्रकार, शहर, आकार और ज़रूरतें पूछेंगे। नाम, फ़ोन नंबर या ID नंबर नहीं। आपके आखिरी संदेश के 24 घंटे बाद, या 'खत्म करें और मिटाएँ' दबाने पर, यह चैट मिट जाती है।",
     cta: "शुरू करें", lang: "भाषा", staff: "मैं Accel में काम करता/करती हूँ (बैक ऑफिस)",
   },
-  chat: { placeholder: "अपना जवाब लिखें…", send: "भेजें", typing: "…", buttonsOnly: "या कोई विकल्प चुनें" },
+  chat: { placeholder: "अपना जवाब लिखें…", send: "भेजें", typing: "…", buttonsOnly: "या कोई विकल्प चुनें", multiHint: "जो भी चाहिए सब चुनें, फिर आगे बढ़ें", continue: "आगे बढ़ें", continueN: "आगे बढ़ें ({{count}} चुने)" },
   gstin: {
     title: "अपना GSTIN जाँचें (वैकल्पिक)",
     notice: "आपकी अनुमति से हम यह GSTIN एक बार (मॉक) GST रजिस्ट्री में देखेंगे, ताकि सक्रिय GSTIN वाले प्रोडक्ट खुल सकें। हम नंबर नहीं रखते।",
