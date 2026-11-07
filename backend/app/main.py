@@ -20,7 +20,12 @@ from fastapi import FastAPI
 from sqlalchemy import select
 
 from app.advisor.api import router as advisor_router
+from app.backoffice.accounts import StaffDirectory
+from app.backoffice.api import router as backoffice_router
+from app.backoffice.referrals import Referrals
+from app.backoffice.service import BackOffice
 from app.kyc.api import router as kyc_router
+from app.privacy.audit import AuditLog
 from app.kyc.ocr import OcrPool
 from app.kyc.registry import DbRegistry
 from app.kyc.service import KycService
@@ -97,6 +102,15 @@ async def lifespan(app: FastAPI):
     app.state.kyc = KycService(engine, DbRegistry(engine), app.state.consent, cipher, app.state.clock, cat,
                                pool=app.state.ocr_pool)
     app.state.orders = OrderService(engine, cat)
+    app.state.audit = AuditLog(engine)
+    app.state.referrals = Referrals(engine)
+    demo = settings.clock_mode == "demo"
+    app.state.staff = StaffDirectory(engine, demo=demo,
+                                     credentials_file=settings.db_path.parent / ".demo-staff-credentials.txt")
+    if app.state.staff.generated_usernames:
+        log.info("demo staff passwords generated for %s (see backend/.demo-staff-credentials.txt)",
+                 ", ".join(app.state.staff.generated_usernames))
+    app.state.backoffice = BackOffice(engine, app.state, app.state.audit, app.state.referrals)
     yield
     app.state.ocr_pool.shutdown()
     engine.dispose()
@@ -109,6 +123,7 @@ app.add_middleware(SecurityMiddleware, limiter=app.state.rate_limiter)
 app.include_router(advisor_router)
 app.include_router(kyc_router)
 app.include_router(orders_router)
+app.include_router(backoffice_router)
 
 
 @app.get("/api/health")

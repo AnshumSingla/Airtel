@@ -209,6 +209,38 @@ class OrderService:
             self._save(doc, conn)
         return self.view(order_id)
 
+    def reviewer_decision(self, order_id: str, approve: bool, line_results: dict[str, list[str]], reason: str) -> dict:
+        """A KYC reviewer decided the case this order waits on (POLICIES.md §9-10)."""
+        doc = self._load(order_id)
+        if doc["status"] != "ON_HOLD" or doc["hold_reason"] != "KYC_REVIEW":
+            raise IllegalTransition("order is not waiting for a KYC review")
+        with self.engine.begin() as conn:
+            if not approve:
+                self._event(conn, doc, None, "ON_HOLD:KYC_REVIEW", "ON_HOLD:KYC_ACTION", "kyc_reviewer",
+                            f"reviewer asked for changes: {reason}")
+                doc["hold_reason"] = "KYC_ACTION"
+                self._message(conn, doc, "ON_HOLD:KYC_ACTION")
+            else:
+                excluded = [ln for ln in doc["lines"] if line_results.get(ln["product_id"])]
+                for ln in excluded:
+                    self._line_to(conn, doc, ln, "EXCLUDED", "system", "line not eligible",
+                                  reason=",".join(line_results[ln["product_id"]]))
+                if excluded:
+                    self._event(conn, doc, None, "ON_HOLD:KYC_REVIEW", "ON_HOLD:BUNDLE_CHANGE_NEEDED",
+                                "kyc_reviewer", f"reviewer approved: {reason}")
+                    doc["hold_reason"] = "BUNDLE_CHANGE_NEEDED"
+                    self._message(conn, doc, "ON_HOLD:BUNDLE_CHANGE_NEEDED")
+                else:
+                    self._order_to(conn, doc, "KYC_OK", "kyc_reviewer", f"reviewer approved: {reason}")
+                    self._start_fulfilment(conn, doc)
+            self._save(doc, conn)
+        return self.view(order_id)
+
+    def orders_for_session(self, session_id: str) -> list[dict]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(orders.c.doc).where(orders.c.session_id == session_id)).all()
+        return [json.loads(r[0]) for r in rows]
+
     def continue_without_excluded(self, order_id: str, new_snapshot: dict) -> dict:
         """Owner accepted quote vN+1 without the excluded lines. KYC is reused, not redone."""
         doc = self._load(order_id)

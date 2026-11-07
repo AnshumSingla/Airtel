@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/advisor", tags=["advisor"])
 
 class StartIn(BaseModel):
     language: str = Field("en", pattern="^(en|hi|hinglish)$")
+    ref: str | None = Field(None, max_length=32)   # partner referral code: credit only, never access
 
 
 class MessageIn(BaseModel):
@@ -38,6 +39,10 @@ def _svc(request: Request) -> AdvisorService:
 def start(body: StartIn, request: Request, response: Response) -> dict:
     sid, turn = _svc(request).start(body.language)
     set_session_cookies(request, response, sid)   # binds the session to this browser
+    from app.backoffice.accounts import REFERRAL_CODES
+
+    if body.ref and body.ref.lower() in REFERRAL_CODES and hasattr(request.app.state, "referrals"):
+        request.app.state.referrals.attribute(sid, REFERRAL_CODES[body.ref.lower()])
     return {"session_id": sid, "p1_notice_version": "p1-2026-11-05", **asdict(turn)}
 
 
@@ -72,6 +77,9 @@ def end(sid: str, request: Request, response: Response) -> dict:
     if hasattr(st, "orders"):
         st.orders.delete_for_session(sid)   # demo: closed/cancelled orders go with the session
     kyc_deleted = st.kyc.delete_for_session(sid) if hasattr(st, "kyc") else 0
+    if hasattr(st, "backoffice"):
+        st.backoffice.delete_for_session(sid)     # claims and notes about this lead
+        st.referrals.delete_for_session(sid)
     unlinked = st.consent.unlink(sid) if hasattr(st, "consent") else 0
     clear_session_cookies(response)
     return {"deleted": _svc(request).end(sid), "kyc_cases_deleted": kyc_deleted, "consent_events_unlinked": unlinked}

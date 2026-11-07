@@ -55,7 +55,8 @@ def make_client(app):
     client = TestClient(app)
 
     def add_csrf(request):
-        token = client.cookies.get("udyam_csrf")
+        name = "udyam_staff_csrf" if request.url.path.startswith("/api/bo/") else "udyam_csrf"
+        token = client.cookies.get(name)
         if token and "x-csrf-token" not in request.headers:
             request.headers["x-csrf-token"] = token
 

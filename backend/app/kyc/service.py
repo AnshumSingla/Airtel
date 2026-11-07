@@ -41,6 +41,7 @@ kyc_cases = Table(
     Column("confirmed_enc", Text),                      # owner-confirmed identifier readings (encrypted)
     Column("trail_enc", Text),                          # repair trail: raw, candidate, decision (encrypted)
     Column("result_json", Text),                        # masked result for display
+    Column("review_json", Text),                        # reviewer decision {decision, reason, reviewer, at}; cleared by a new upload
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
@@ -113,7 +114,7 @@ class KycService:
                 case_id=case_id, doc_type=doc_type, fields_enc=self.cipher.encrypt(doc.fields),
                 refused=doc.refused, seen_type=doc.seen_type, quality_json=json.dumps(quality)))
             conn.execute(kyc_cases.update().where(kyc_cases.c.case_id == case_id)
-                         .values(status="open", updated_at=_now()))
+                         .values(status="open", review_json=None, updated_at=_now()))
         return {"doc_type": doc_type, "refused": doc.refused, "seen_type": doc.seen_type,
                 "quality": quality, "fields": mask_fields(doc.fields)}
 
@@ -131,6 +132,10 @@ class KycService:
         latest = {t["field"]: t["decision"] for t in trail}
         disputed = frozenset(f for f, d in latest.items() if d == "disputed")
         result = evaluate(self._docs(case_id), self.reg, self.clock.business_as_of(), confirmed, disputed)
+        review = json.loads(case["review_json"]) if case.get("review_json") else None
+        if review and result.outcome == "manual_review":
+            # A specialist decided this case (POLICIES.md §9 reviewer authority). Findings stay listed.
+            result.outcome = "checks_passed" if review["decision"] == "approved" else "owner_action_needed"
         with self.engine.begin() as conn:
             conn.execute(kyc_cases.update().where(kyc_cases.c.case_id == case_id).values(
                 status="evaluated", outcome=result.outcome, result_json=json.dumps(self.view(result)),
@@ -187,6 +192,27 @@ class KycService:
                 for c in check_bundle(self.cat, profile, product_ids)]
 
     # ------------------------------------------------------------ deletion
+    def record_review(self, case_id: str, approve: bool, reason: str, reviewer: str) -> KycResult:
+        case = self._case(case_id)
+        if case["outcome"] != "manual_review":
+            raise ValueError("this case is not waiting for review")
+        review = {"decision": "approved" if approve else "rejected", "reason": reason, "reviewer": reviewer,
+                  "at": _now().isoformat()}
+        with self.engine.begin() as conn:
+            conn.execute(kyc_cases.update().where(kyc_cases.c.case_id == case_id).values(review_json=json.dumps(review)))
+        return self.evaluate(case_id)
+
+    def cases_in_review(self) -> list[dict]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(kyc_cases).where(kyc_cases.c.outcome == "manual_review")
+                                .order_by(kyc_cases.c.updated_at)).mappings().all()
+        return [{"case_id": r["case_id"], "session_id": r["session_id"], "updated_at": r["updated_at"].isoformat(),
+                 "result": json.loads(r["result_json"]) if r["result_json"] else None} for r in rows]
+
+    def full_fields(self, case_id: str) -> dict[str, dict]:
+        """Unmasked extracted fields, for the KYC reviewer only (the caller audits the view)."""
+        return {k: d.fields for k, d in self._docs(case_id).items()}
+
     def delete_for_session(self, session_id: str) -> int:
         """P2/P3 withdrawal or session deletion: extracted fields, results and trails go."""
         with self.engine.begin() as conn:

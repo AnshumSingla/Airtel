@@ -30,9 +30,10 @@ CSRF_COOKIE = "udyam_csrf"
 CSRF_HEADER = "x-csrf-token"
 SESSION_MAX_AGE = 24 * 3600
 MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
-CSRF_EXEMPT = {("POST", "/api/advisor/sessions")}
+STAFF_CSRF_COOKIE = "udyam_staff_csrf"
+CSRF_EXEMPT = {("POST", "/api/advisor/sessions"), ("POST", "/api/bo/login")}
 
-DEFAULT_LIMITS = {"start": (10, 60), "upload": (30, 60), "api": (240, 60)}   # (requests, seconds) per IP
+DEFAULT_LIMITS = {"start": (10, 60), "login": (10, 60), "upload": (30, 60), "api": (240, 60)}   # (requests, seconds) per IP
 
 CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
        "font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
@@ -95,6 +96,8 @@ class RateLimiter:
 def _group(method: str, path: str) -> str:
     if method == "POST" and path == "/api/advisor/sessions":
         return "start"
+    if method == "POST" and path == "/api/bo/login":
+        return "login"
     if path.startswith("/api/kyc/cases/") and path.endswith("/documents"):
         return "upload"
     return "api"
@@ -125,7 +128,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 if origin and origin != own and origin not in allowed_origins():
                     return self._headers(JSONResponse({"detail": "cross-site request refused"}, status_code=403))
                 if (method, path) not in CSRF_EXEMPT:
-                    token, cookie = request.headers.get(CSRF_HEADER, ""), request.cookies.get(CSRF_COOKIE, "")
+                    # Staff routes use the staff token; owner routes use the owner token.
+                    cookie_name = STAFF_CSRF_COOKIE if path.startswith("/api/bo/") else CSRF_COOKIE
+                    token, cookie = request.headers.get(CSRF_HEADER, ""), request.cookies.get(cookie_name, "")
                     if not token or not cookie or not hmac.compare_digest(token, cookie):
                         return self._headers(JSONResponse({"detail": "missing or invalid CSRF token"}, status_code=403))
         return self._headers(await call_next(request))

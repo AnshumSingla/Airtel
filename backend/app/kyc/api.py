@@ -25,11 +25,13 @@ class ConsentIn(BaseModel):
     purpose: str = Field(..., pattern="^P[1-6]$")
     decision: str = Field(..., pattern="^(given|declined)$")
     language: str = Field("en", pattern="^(en|hi|hinglish)$")
+    team: str | None = None          # P5 only: "accel_sales" or a partner id
 
 
 class WithdrawIn(BaseModel):
     session_id: str
     purpose: str = Field(..., pattern="^P[1-6]$")
+    team: str | None = None          # P5: one team; omitted = every team
 
 
 class CaseIn(BaseModel):
@@ -55,9 +57,15 @@ def _session_exists(request: Request, sid: str) -> None:
 
 @router.post("/consents")
 def give_consent(body: ConsentIn, request: Request) -> dict:
+    from app.backoffice.accounts import TEAM_NAMES
+
     _session_exists(request, body.session_id)
+    if body.purpose == "P5" and body.team not in TEAM_NAMES:
+        raise HTTPException(422, "P5 must name a team: " + ", ".join(TEAM_NAMES))
+    if body.purpose != "P5" and body.team is not None:
+        raise HTTPException(422, "only P5 names a team")
     event = request.app.state.consent.record(body.session_id, body.purpose, body.decision,
-                                             NOTICE_VERSIONS[body.purpose], body.language)
+                                             NOTICE_VERSIONS[body.purpose], body.language, team=body.team)
     return {"event_id": event, "notice_version": NOTICE_VERSIONS[body.purpose]}
 
 
@@ -66,8 +74,17 @@ def withdraw(body: WithdrawIn, request: Request) -> dict:
     """Processing for the purpose stops now (POLICIES.md §2 rule 3)."""
     st = request.app.state
     _session_exists(request, body.session_id)
-    st.consent.record(body.session_id, body.purpose, "withdrawn", NOTICE_VERSIONS[body.purpose])
+    from app.backoffice.accounts import TEAM_NAMES
+
     effects: list[str] = []
+    if body.purpose == "P5":
+        teams = [body.team] if body.team else [t for t in TEAM_NAMES if st.consent.has(body.session_id, "P5", t)]
+        for t in teams:
+            st.consent.record(body.session_id, "P5", "withdrawn", NOTICE_VERSIONS["P5"], team=t)
+            st.backoffice.delete_for_session(body.session_id, t)
+            effects.append(f"removed_from_queue={t}")
+    else:
+        st.consent.record(body.session_id, body.purpose, "withdrawn", NOTICE_VERSIONS[body.purpose])
     if body.purpose in {"P2", "P3"}:
         effects.append(f"kyc_cases_deleted={st.kyc.delete_for_session(body.session_id)}")
     if body.purpose == "P1":
